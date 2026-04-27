@@ -1,12 +1,15 @@
 package com.ultraprocessed.core
 
 import android.content.Context
+import com.ultraprocessed.analyzer.AnalyzerFactory
 import com.ultraprocessed.data.AppDatabase
+import com.ultraprocessed.openfoodfacts.OpenFoodFactsClient
 import com.ultraprocessed.data.repository.ConsumptionRepository
 import com.ultraprocessed.data.repository.FastingRepository
 import com.ultraprocessed.data.repository.FoodRepository
 import com.ultraprocessed.data.settings.SecretStore
 import com.ultraprocessed.data.settings.Settings
+import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,6 +22,8 @@ import kotlinx.coroutines.SupervisorJob
 class AppContainer(applicationContext: Context) {
 
     val applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    val httpClient: HttpClient by lazy { Http.create() }
 
     val database: AppDatabase by lazy { AppDatabase.build(applicationContext) }
 
@@ -33,8 +38,14 @@ class AppContainer(applicationContext: Context) {
     val settings: Settings by lazy { Settings(applicationContext) }
     val secrets: SecretStore by lazy { SecretStore(applicationContext) }
 
+    val analyzerFactory: AnalyzerFactory by lazy {
+        AnalyzerFactory(settings, secrets, httpClient)
+    }
+
+    val openFoodFactsClient: OpenFoodFactsClient by lazy {
+        OpenFoodFactsClient(client = httpClient)
+    }
+
     // Subsystems wired in subsequent tasks:
-    //   val analyzerFactory: AnalyzerFactory
-    //   val openFoodFactsClient: OpenFoodFactsClient
     //   val syncCoordinator: SyncCoordinator
 }
