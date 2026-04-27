@@ -9,13 +9,18 @@ from sqlmodel import Session, select
 
 from app.auth import get_current_user
 from app.db import get_session
-from app.models import ConsumptionLog, FoodEntry, User
+from app.models import ConsumptionLog, FoodEntry, User, UserTargets
 from app.services.nutrients import (
     DEFAULT_CALORIE_TARGET,
     REFERENCE_DAILY_VALUES,
     adequacy,
     aggregate_nutrients,
 )
+
+
+def _calorie_target(session: Session, user_id: int) -> float:
+    row = session.get(UserTargets, user_id)
+    return row.calorie_target_kcal if row else DEFAULT_CALORIE_TARGET
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -96,7 +101,7 @@ def _aggregate(
         to=end,
         meal_count=len(logs),
         calories_consumed=round(total_kcal, 1),
-        calorie_reference=DEFAULT_CALORIE_TARGET,
+        calorie_reference=_calorie_target(session, user_id),
         nova_breakdown=nova_buckets,
         nova_average=nova_average,
         nutrients_consumed=nutrients_total,

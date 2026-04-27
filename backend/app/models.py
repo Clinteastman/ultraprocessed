@@ -117,6 +117,13 @@ class FastingProfile(SQLModel, table=True):
     active: bool = False
 
 
+class UserTargets(SQLModel, table=True):
+    __tablename__ = "user_targets"
+
+    user_id: int = Field(foreign_key="users.id", primary_key=True)
+    calorie_target_kcal: float = 2000.0
+
+
 # ---- Open Food Facts cache ----
 
 class OffCache(SQLModel, table=True):

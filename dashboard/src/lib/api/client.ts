@@ -49,6 +49,10 @@ export class ApiError extends Error {
   }
 }
 
+export interface TargetsDto {
+  calorie_target_kcal: number;
+}
+
 export const api = {
   health: () => request<{ status: string; version: string }>("/api/v1/health"),
   whoami: () => request<{ device_id: number; user_id: number; device_name: string }>("/api/v1/auth/whoami"),
@@ -62,13 +66,53 @@ export const api = {
     request<AggregateResponse>(`/api/v1/dashboard/range?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   haSnapshot: () => request<HaSnapshot>("/api/v1/ha/snapshot"),
   recentFoods: (limit = 50) => request<FoodEntryDto[]>(`/api/v1/foods?limit=${limit}`),
-  consumption: (from?: string, to?: string) => {
+  consumption: (from?: string, to?: string, limit = 1000) => {
     const params = new URLSearchParams();
     if (from) params.set("from", from);
     if (to) params.set("to", to);
-    const qs = params.toString();
-    return request<ConsumptionLogDto[]>(`/api/v1/consumption${qs ? `?${qs}` : ""}`);
-  }
+    params.set("limit", String(limit));
+    return request<ConsumptionLogDto[]>(`/api/v1/consumption?${params}`);
+  },
+  deleteConsumption: (clientUuid: string) =>
+    fetch(`/api/v1/consumption/${encodeURIComponent(clientUuid)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${getToken()}` }
+    }).then((r) => {
+      if (!r.ok) throw new ApiError(r.status, "");
+    }),
+  deleteFood: (clientUuid: string) =>
+    fetch(`/api/v1/foods/${encodeURIComponent(clientUuid)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${getToken()}` }
+    }).then((r) => {
+      if (!r.ok) throw new ApiError(r.status, "");
+    }),
+  getTargets: () => request<TargetsDto>("/api/v1/targets"),
+  putTargets: (t: TargetsDto) =>
+    request<TargetsDto>("/api/v1/targets", {
+      method: "PUT",
+      body: JSON.stringify(t)
+    }),
+  getFastingProfile: () =>
+    request<{
+      id: number | null;
+      name: string;
+      schedule_type: string;
+      eating_window_start_minutes: number;
+      eating_window_end_minutes: number;
+      active: boolean;
+    } | null>("/api/v1/fasting/profile"),
+  putFastingProfile: (p: {
+    name: string;
+    schedule_type: string;
+    eating_window_start_minutes: number;
+    eating_window_end_minutes: number;
+    active: boolean;
+  }) =>
+    request("/api/v1/fasting/profile", {
+      method: "PUT",
+      body: JSON.stringify(p)
+    })
 };
 
 /**

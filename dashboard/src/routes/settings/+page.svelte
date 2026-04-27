@@ -1,5 +1,4 @@
 <script lang="ts">
-  import QRCode from "qrcode";
   import { api } from "$lib/api/client";
 
   let qrSvg = $state<string | null>(null);
@@ -35,6 +34,7 @@
         user_id: result.user_id
       });
       payload = blob;
+      const QRCode = (await import("qrcode")).default;
       qrSvg = await QRCode.toString(blob, {
         type: "svg",
         margin: 2,
@@ -67,9 +67,17 @@
   <div>
     <h2 class="font-display text-3xl">Settings</h2>
     <p class="text-ink-mid text-sm mt-2">
-      The dashboard runs in the same container as the API. Nothing to point anywhere - this page is just for connecting phones.
+      The dashboard runs in the same container as the API. This page is for connecting phones and pointing at related screens.
     </p>
   </div>
+
+  <section class="rounded-lg bg-surface-1 p-6 space-y-3">
+    <p class="text-xs uppercase tracking-wider text-ink-mid">Daily targets</p>
+    <p class="text-sm text-ink-mid">
+      Edit your calorie target and fasting window on the
+      <a href="/targets" class="text-accent hover:underline">Targets page</a>.
+    </p>
+  </section>
 
   <section class="rounded-lg bg-surface-1 p-6 space-y-5">
     <div>

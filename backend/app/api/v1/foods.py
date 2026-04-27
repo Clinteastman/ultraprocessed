@@ -131,6 +131,23 @@ def get_food(
     return _to_dto(row)
 
 
+@router.delete("/{client_uuid}", status_code=204)
+def delete_food(
+    client_uuid: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> None:
+    row = session.exec(
+        select(FoodEntry).where(FoodEntry.client_uuid == client_uuid)
+    ).first()
+    if row is None:
+        return None
+    if row.user_id != user.id:
+        raise HTTPException(status_code=403, detail="not yours")
+    session.delete(row)
+    session.commit()
+
+
 def _to_dto(row: FoodEntry) -> FoodEntryDto:
     return FoodEntryDto(
         client_uuid=row.client_uuid,

@@ -76,6 +76,23 @@ def upsert_consumption(
     return [_to_dto(row) for row in saved]
 
 
+@router.delete("/{client_uuid}", status_code=204)
+def delete_consumption(
+    client_uuid: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> None:
+    row = session.exec(
+        select(ConsumptionLog).where(ConsumptionLog.client_uuid == client_uuid)
+    ).first()
+    if row is None:
+        return None
+    if row.user_id != user.id:
+        raise HTTPException(status_code=403, detail="not yours")
+    session.delete(row)
+    session.commit()
+
+
 @router.get("", response_model=list[ConsumptionLogDto])
 def list_consumption(
     from_: datetime | None = Query(default=None, alias="from"),
