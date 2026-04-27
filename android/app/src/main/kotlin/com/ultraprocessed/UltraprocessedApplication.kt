@@ -10,5 +10,7 @@ class UltraprocessedApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(applicationContext)
+        // Best-effort startup sync; no-op if backend isn't configured yet.
+        container.syncCoordinator.trigger()
     }
 }

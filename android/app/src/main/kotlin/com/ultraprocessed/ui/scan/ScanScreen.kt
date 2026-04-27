@@ -47,12 +47,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ultraprocessed.UltraprocessedApplication
 import com.ultraprocessed.theme.Semantic
 import com.ultraprocessed.theme.Tokens
 import com.ultraprocessed.ui.MainViewModel
 import com.ultraprocessed.ui.PendingResult
 import com.ultraprocessed.ui.components.Overline
+import com.ultraprocessed.ui.components.TodayChip
 import kotlinx.coroutines.flow.collectLatest
+import java.util.Calendar
 
 @Composable
 fun ScanScreen(
@@ -106,9 +109,21 @@ fun ScanScreen(
             PermissionPrompt(onRequest = { permissionLauncher.launch(Manifest.permission.CAMERA) })
         }
 
+        val container = remember(context) {
+            (context.applicationContext as UltraprocessedApplication).container
+        }
+        val (startMs, endMs) = remember { todayBoundsMs() }
+        val todayItems by container.consumptionRepository
+            .observeRange(startMs, endMs)
+            .collectAsState(initial = emptyList())
+        val kcalToday = todayItems.sumOf { it.log.kcalConsumedSnapshot ?: 0.0 }
+        val mealsToday = todayItems.size
+
         TopChrome(
             onOpenSettings = onOpenSettings,
-            onOpenHistory = onOpenHistory
+            onOpenHistory = onOpenHistory,
+            kcalToday = kcalToday,
+            mealsToday = mealsToday
         )
 
         BottomChrome(
@@ -192,9 +207,11 @@ private fun PermissionPrompt(onRequest: () -> Unit) {
 @Composable
 private fun BoxScope.TopChrome(
     onOpenSettings: () -> Unit,
-    onOpenHistory: () -> Unit
+    onOpenHistory: () -> Unit,
+    kcalToday: Double,
+    mealsToday: Int
 ) {
-    Row(
+    androidx.compose.foundation.layout.Column(
         modifier = Modifier
             .align(Alignment.TopStart)
             .fillMaxWidth()
@@ -202,17 +219,38 @@ private fun BoxScope.TopChrome(
                 start = Tokens.Space.s5,
                 end = Tokens.Space.s5,
                 top = Tokens.Space.s7
-            ),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+            )
     ) {
-        Overline(text = "Ultraprocessed", color = Color.White.copy(alpha = 0.85f))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            CircleIconButton(icon = Icons.Default.History, onClick = onOpenHistory)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Overline(text = "Ultraprocessed", color = Color.White.copy(alpha = 0.85f))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircleIconButton(icon = Icons.Default.History, onClick = onOpenHistory)
+                Spacer(Modifier.size(Tokens.Space.s2))
+                CircleIconButton(icon = Icons.Default.Settings, onClick = onOpenSettings)
+            }
+        }
+        if (mealsToday > 0) {
             Spacer(Modifier.size(Tokens.Space.s2))
-            CircleIconButton(icon = Icons.Default.Settings, onClick = onOpenSettings)
+            TodayChip(kcalToday = kcalToday, mealsToday = mealsToday)
         }
     }
+}
+
+private fun todayBoundsMs(): Pair<Long, Long> {
+    val cal = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val start = cal.timeInMillis
+    cal.add(Calendar.DAY_OF_YEAR, 1)
+    val end = cal.timeInMillis - 1
+    return start to end
 }
 
 @Composable

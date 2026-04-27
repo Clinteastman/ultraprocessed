@@ -46,6 +46,15 @@ class AppContainer(applicationContext: Context) {
         OpenFoodFactsClient(client = httpClient)
     }
 
-    // Subsystems wired in subsequent tasks:
-    //   val syncCoordinator: SyncCoordinator
+    val syncCoordinator: com.ultraprocessed.sync.SyncCoordinator by lazy {
+        com.ultraprocessed.sync.SyncCoordinator(
+            settings = settings,
+            secrets = secrets,
+            httpClient = httpClient,
+            database = database,
+            foodRepository = foodRepository,
+            consumptionRepository = consumptionRepository,
+            scope = applicationScope
+        )
+    }
 }

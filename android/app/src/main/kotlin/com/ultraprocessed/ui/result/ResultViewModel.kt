@@ -34,6 +34,7 @@ class ResultViewModel(
 
     private val foodRepo: FoodRepository = container.foodRepository
     private val consumptionRepo: ConsumptionRepository = container.consumptionRepository
+    private val syncCoordinator = container.syncCoordinator
 
     /**
      * Classify a free-text food description (e.g. "mango", "tesco hummus")
@@ -106,6 +107,7 @@ class ResultViewModel(
                 createdAt = now
             )
             consumptionRepo.log(log)
+            syncCoordinator.trigger()
             onComplete()
         }
     }
