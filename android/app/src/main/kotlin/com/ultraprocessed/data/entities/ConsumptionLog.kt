@@ -54,6 +54,10 @@ data class ConsumptionLog(
     @ColumnInfo(name = "kcal_consumed_snapshot")
     val kcalConsumedSnapshot: Double? = null,
 
+    /** Nutrient snapshot (consumed amounts, JSON-encoded Nutrients) at log time. */
+    @ColumnInfo(name = "nutrients_consumed_json")
+    val nutrientsConsumedJson: String? = null,
+
     @ColumnInfo(name = "sync_state")
     val syncState: SyncState = SyncState.PENDING,
 

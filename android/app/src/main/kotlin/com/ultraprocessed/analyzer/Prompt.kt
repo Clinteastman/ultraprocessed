@@ -31,7 +31,16 @@ internal object Prompt {
             "novaClass": integer 1-4,
             "kcalPer100g": number or null,
             "kcalPerUnit": number or null
-          }
+          },
+          "nutrients_per_100g": object or null, with any subset of:
+            "protein_g", "fat_g", "saturated_fat_g", "carbs_g", "sugar_g",
+            "fiber_g", "salt_g", "sodium_mg", "cholesterol_mg", "omega3_g",
+            "calcium_mg", "iron_mg", "potassium_mg", "magnesium_mg", "zinc_mg",
+            "phosphorus_mg", "selenium_ug", "iodine_ug", "copper_mg", "manganese_mg",
+            "vitamin_a_ug", "vitamin_c_mg", "vitamin_d_ug", "vitamin_e_mg",
+            "vitamin_k_ug", "vitamin_b1_mg", "vitamin_b2_mg", "vitamin_b3_mg",
+            "vitamin_b6_mg", "vitamin_b12_ug", "folate_ug"
+            (numbers; omit fields you can't estimate; values are per 100g)
         }
 
         NOVA reference:
@@ -68,6 +77,15 @@ internal object Prompt {
             The user can pick the right one if your primary guess is wrong. Skip
             alternatives only when you're highly confident (clear barcoded packaging,
             unambiguous label text, or distinctive whole foods like a banana).
+          - Always populate nutrients_per_100g with whatever you reasonably know.
+            For whole foods, use standard nutrition database values (e.g. apple has
+            ~0.3g protein, ~14g carbs, ~10g sugar, ~2.4g fiber, ~107mg potassium,
+            ~5mg vit C per 100g). For packaged foods, use the label values when
+            visible; otherwise estimate from typical formulations. Omit fields you
+            genuinely can't estimate (better than wrong numbers). The user wants
+            micronutrient awareness for tracking deficits and excesses, so include
+            calcium, iron, potassium, magnesium, vitamin C/D, B-vitamins, etc.
+            whenever you can.
     """.trimIndent()
 
     /**

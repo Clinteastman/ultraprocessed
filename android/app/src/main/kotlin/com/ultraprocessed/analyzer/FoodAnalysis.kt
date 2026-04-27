@@ -44,7 +44,14 @@ data class FoodAnalysis(
      * these as selectable chips so the user can override when the model's
      * primary guess is wrong (e.g. it called a mango an apple).
      */
-    val alternatives: List<FoodAlternative> = emptyList()
+    val alternatives: List<FoodAlternative> = emptyList(),
+
+    /**
+     * Per-100g nutrient breakdown (macros + micros). Every field inside
+     * is optional; the analyzer fills in whatever it knows.
+     */
+    @kotlinx.serialization.SerialName("nutrients_per_100g")
+    val nutrientsPer100g: Nutrients? = null
 )
 
 @Serializable

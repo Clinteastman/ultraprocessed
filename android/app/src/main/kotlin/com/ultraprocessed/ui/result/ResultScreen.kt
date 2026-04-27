@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ultraprocessed.analyzer.FoodAlternative
 import com.ultraprocessed.analyzer.FoodAnalysis
+import com.ultraprocessed.ui.components.NutrientBreakdown
 import kotlinx.coroutines.launch
 import com.ultraprocessed.theme.Semantic
 import com.ultraprocessed.theme.Tokens
@@ -213,6 +214,17 @@ fun ResultScreen(
 
         KcalLine(analysis.kcalPer100g, analysis.kcalPerUnit, percentage.toInt())
 
+        analysis.nutrientsPer100g?.let { nutrients ->
+            val factor = consumedFactorOf100g(analysis, percentage.toInt())
+            if (factor != null) {
+                Spacer(Modifier.height(Tokens.Space.s5))
+                NutrientBreakdown(
+                    nutrientsPer100g = nutrients,
+                    factorOf100g = factor
+                )
+            }
+        }
+
         Spacer(Modifier.height(Tokens.Space.s6))
         Overline(text = "How much did you eat?")
         Spacer(Modifier.height(Tokens.Space.s3))
@@ -324,6 +336,23 @@ private fun novaLabel(novaClass: Int): String = when (novaClass) {
     3 -> "Processed"
     4 -> "Ultra-processed"
     else -> "Unknown"
+}
+
+/**
+ * Mirrors [com.ultraprocessed.ui.result.ResultViewModel.consumedFactorOf100g]
+ * so the nutrient breakdown reflects the slider in real time without a
+ * round-trip to the ViewModel.
+ */
+private fun consumedFactorOf100g(analysis: FoodAnalysis, pct: Int): Double? {
+    val pctFactor = pct / 100.0
+    val kcal100 = analysis.kcalPer100g
+    val kcalUnit = analysis.kcalPerUnit
+    val gramsConsumed = when {
+        kcal100 != null && kcal100 > 0 && kcalUnit != null -> (kcalUnit / kcal100) * 100.0 * pctFactor
+        kcalUnit != null || kcal100 != null -> 100.0 * pctFactor
+        else -> return null
+    }
+    return gramsConsumed / 100.0
 }
 
 @OptIn(ExperimentalLayoutApi::class)

@@ -1,6 +1,7 @@
 package com.ultraprocessed.openfoodfacts
 
 import com.ultraprocessed.analyzer.FoodAnalysis
+import com.ultraprocessed.analyzer.Nutrients
 import com.ultraprocessed.core.Http
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -113,8 +114,67 @@ class OpenFoodFactsClient(
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
                 .take(20),
-            confidence = if (novaPresent) 0.95 else 0.4
+            confidence = if (novaPresent) 0.95 else 0.4,
+            nutrientsPer100g = nutriments?.toNutrients()
         )
+    }
+
+    /**
+     * Maps Open Food Facts' `nutriments` block onto our [Nutrients] model.
+     * OFF stores most micronutrients in grams per 100g; we convert to
+     * mg / ug to match nutrition labels.
+     */
+    private fun kotlinx.serialization.json.JsonObject.toNutrients(): Nutrients? {
+        // Macros (already in g or mg)
+        val protein = numeric("proteins_100g")
+        val fat = numeric("fat_100g")
+        val saturatedFat = numeric("saturated-fat_100g")
+        val carbs = numeric("carbohydrates_100g")
+        val sugar = numeric("sugars_100g")
+        val fiber = numeric("fiber_100g")
+        val salt = numeric("salt_100g")
+        val sodium = numeric("sodium_100g")?.times(1000)  // OFF sodium is g/100g
+        val cholesterol = numeric("cholesterol_100g")?.times(1000)
+        val omega3 = numeric("omega-3-fat_100g")
+
+        // Minerals (OFF stores in g/100g; convert to mg or ug)
+        val calcium = numeric("calcium_100g")?.times(1000)
+        val iron = numeric("iron_100g")?.times(1000)
+        val potassium = numeric("potassium_100g")?.times(1000)
+        val magnesium = numeric("magnesium_100g")?.times(1000)
+        val zinc = numeric("zinc_100g")?.times(1000)
+        val phosphorus = numeric("phosphorus_100g")?.times(1000)
+        val selenium = numeric("selenium_100g")?.times(1_000_000)  // g -> ug
+        val iodine = numeric("iodine_100g")?.times(1_000_000)
+        val copper = numeric("copper_100g")?.times(1000)
+        val manganese = numeric("manganese_100g")?.times(1000)
+
+        // Vitamins
+        val vitaminA = numeric("vitamin-a_100g")?.times(1_000_000)
+        val vitaminC = numeric("vitamin-c_100g")?.times(1000)
+        val vitaminD = numeric("vitamin-d_100g")?.times(1_000_000)
+        val vitaminE = numeric("vitamin-e_100g")?.times(1000)
+        val vitaminK = numeric("vitamin-k_100g")?.times(1_000_000)
+        val vitaminB1 = numeric("vitamin-b1_100g")?.times(1000)
+        val vitaminB2 = numeric("vitamin-b2_100g")?.times(1000)
+        val vitaminB3 = numeric("vitamin-pp_100g")?.times(1000)
+        val vitaminB6 = numeric("vitamin-b6_100g")?.times(1000)
+        val vitaminB12 = numeric("vitamin-b12_100g")?.times(1_000_000)
+        val folate = numeric("vitamin-b9_100g")?.times(1_000_000)
+
+        val n = Nutrients(
+            proteinG = protein, fatG = fat, saturatedFatG = saturatedFat,
+            carbsG = carbs, sugarG = sugar, fiberG = fiber, saltG = salt,
+            sodiumMg = sodium, cholesterolMg = cholesterol, omega3G = omega3,
+            calciumMg = calcium, ironMg = iron, potassiumMg = potassium,
+            magnesiumMg = magnesium, zincMg = zinc, phosphorusMg = phosphorus,
+            seleniumUg = selenium, iodineUg = iodine, copperMg = copper, manganeseMg = manganese,
+            vitaminAUg = vitaminA, vitaminCMg = vitaminC, vitaminDUg = vitaminD,
+            vitaminEMg = vitaminE, vitaminKUg = vitaminK,
+            vitaminB1Mg = vitaminB1, vitaminB2Mg = vitaminB2, vitaminB3Mg = vitaminB3,
+            vitaminB6Mg = vitaminB6, vitaminB12Ug = vitaminB12, folateUg = folate
+        )
+        return if (n.isEmpty()) null else n
     }
 
     private fun kotlinx.serialization.json.JsonObject.string(key: String): String? =

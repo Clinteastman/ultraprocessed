@@ -53,6 +53,9 @@ data class FoodEntry(
     @ColumnInfo(name = "ingredients_json")
     val ingredientsJson: String = "[]",
 
+    @ColumnInfo(name = "nutrients_json")
+    val nutrientsJson: String? = null,
+
     val source: FoodSource,
     val confidence: Double = 1.0,
 

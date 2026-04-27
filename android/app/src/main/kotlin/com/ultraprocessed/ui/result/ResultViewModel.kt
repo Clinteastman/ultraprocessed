@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import com.ultraprocessed.UltraprocessedApplication
 import com.ultraprocessed.analyzer.FoodAnalysis
+import com.ultraprocessed.analyzer.Nutrients
 import com.ultraprocessed.core.AppContainer
 import com.ultraprocessed.core.Http
 import com.ultraprocessed.data.entities.ConsumptionLog
@@ -57,6 +58,10 @@ class ResultViewModel(
 
             val imagePath = pending.imageBytes?.let { writeImage(foodUuid, it) }
 
+            val nutrientsJson = pending.analysis.nutrientsPer100g?.let {
+                Http.Json.encodeToString(Nutrients.serializer(), it)
+            }
+
             val foodEntry = FoodEntry(
                 clientUuid = foodUuid,
                 name = pending.analysis.name,
@@ -73,6 +78,7 @@ class ResultViewModel(
                     ListSerializer(String.serializer()),
                     pending.analysis.ingredients
                 ),
+                nutrientsJson = nutrientsJson,
                 source = pending.source,
                 confidence = pending.analysis.confidence,
                 createdAt = now,
@@ -82,6 +88,13 @@ class ResultViewModel(
             foodRepo.upsert(foodEntry)
 
             val kcalSnapshot = estimateKcal(pending.analysis, percentageEaten)
+            val consumedFactor = consumedFactorOf100g(pending.analysis, percentageEaten)
+            val consumedNutrients = pending.analysis.nutrientsPer100g
+                ?.takeIf { consumedFactor != null }
+                ?.scaledBy(consumedFactor!!)
+            val consumedNutrientsJson = consumedNutrients?.let {
+                Http.Json.encodeToString(Nutrients.serializer(), it)
+            }
 
             val log = ConsumptionLog(
                 clientUuid = UUID.randomUUID().toString(),
@@ -89,6 +102,7 @@ class ResultViewModel(
                 percentageEaten = percentageEaten.coerceIn(0, 100),
                 eatenAt = now,
                 kcalConsumedSnapshot = kcalSnapshot,
+                nutrientsConsumedJson = consumedNutrientsJson,
                 createdAt = now
             )
             consumptionRepo.log(log)
@@ -116,6 +130,24 @@ class ResultViewModel(
             kcal100 != null -> kcal100 * factor
             else -> null
         }
+    }
+
+    /**
+     * Returns the multiplier we should apply to per-100g nutrient values
+     * to get the consumed amount. Derived from kcalPerUnit / kcalPer100g
+     * (giving us the unit's mass) when both are known; otherwise falls
+     * back to the percentage of a 100g portion.
+     */
+    private fun consumedFactorOf100g(analysis: FoodAnalysis, pct: Int): Double? {
+        val pctFactor = pct / 100.0
+        val kcal100 = analysis.kcalPer100g
+        val kcalUnit = analysis.kcalPerUnit
+        val gramsConsumed = when {
+            kcal100 != null && kcal100 > 0 && kcalUnit != null -> (kcalUnit / kcal100) * 100.0 * pctFactor
+            kcalUnit != null || kcal100 != null -> 100.0 * pctFactor
+            else -> return null
+        }
+        return gramsConsumed / 100.0
     }
 
     companion object {

@@ -18,7 +18,7 @@ import com.ultraprocessed.data.entities.FoodEntry
         ConsumptionLog::class,
         FastingProfile::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
