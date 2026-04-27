@@ -17,9 +17,9 @@ services:
       - "${ULTRAPROCESSED_PORT:-8000}:8000"
     volumes:
       - backend-data:/app/data
-      # Drop a built SvelteKit static export here (dashboard/build) and the
-      # backend will serve it at /. Phase 2/3 task wires the build step.
-      # - ../dashboard/build:/app/dashboard:ro
+      # Build dashboard first (cd dashboard && pnpm build) - this mount lets
+      # the backend serve the resulting static SPA at /.
+      - ../dashboard/build:/app/dashboard:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health').status==200 else 1)"]
       interval: 30s
