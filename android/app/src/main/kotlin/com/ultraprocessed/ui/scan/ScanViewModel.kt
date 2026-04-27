@@ -48,13 +48,7 @@ class ScanViewModel(
                 return@launch
             }
             when (result) {
-                is OpenFoodFactsResult.Found -> _scanState.value = ScanState.Done(
-                    analysis = result.analysis,
-                    source = FoodSource.BARCODE,
-                    barcode = result.barcode,
-                    imageBytes = null,
-                    imageUrl = result.imageUrl
-                )
+                is OpenFoodFactsResult.Found -> handleFound(result)
                 OpenFoodFactsResult.NotFound -> _scanState.value =
                     ScanState.Error("Barcode not in Open Food Facts. Try the shutter for OCR or photo classification.")
                 is OpenFoodFactsResult.NetworkError -> _scanState.value =
@@ -62,6 +56,82 @@ class ScanViewModel(
             }
         }
     }
+
+    private suspend fun handleFound(result: OpenFoodFactsResult.Found) {
+        if (result.hasReliableNova && result.nameKnown) {
+            _scanState.value = ScanState.Done(
+                analysis = result.analysis,
+                source = FoodSource.BARCODE,
+                barcode = result.barcode,
+                imageBytes = null,
+                imageUrl = result.imageUrl
+            )
+            return
+        }
+
+        // OFF gave us a partial hit. Use whatever text it returned (name +
+        // ingredients) to ask the LLM for a proper classification, then
+        // merge the LLM's NOVA verdict back over the OFF metadata.
+        _scanState.value = ScanState.Looking("Classifying...")
+
+        val analyzer = runCatching { analyzerFactory.current() }.getOrElse {
+            _scanState.value = fallbackOff(result)
+            return
+        }
+        val description = buildString {
+            if (result.analysis.name.isNotBlank() && result.analysis.name != "Unknown product") {
+                append("Product: ${result.analysis.name}\n")
+            }
+            result.analysis.brand?.let { append("Brand: $it\n") }
+            if (result.analysis.ingredients.isNotEmpty()) {
+                append("Ingredients: ${result.analysis.ingredients.joinToString(", ")}\n")
+            }
+            append("Barcode: ${result.barcode}")
+        }
+
+        val llm = analyzer.analyzeText(description)
+        llm.fold(
+            onSuccess = { llmAnalysis ->
+                val merged = result.analysis.copy(
+                    name = llmAnalysis.name.takeIf { it.isNotBlank() && it != "Unknown food" }
+                        ?: result.analysis.name,
+                    brand = result.analysis.brand ?: llmAnalysis.brand,
+                    novaClass = llmAnalysis.novaClass,
+                    novaRationale = llmAnalysis.novaRationale,
+                    kcalPer100g = result.analysis.kcalPer100g ?: llmAnalysis.kcalPer100g,
+                    kcalPerUnit = result.analysis.kcalPerUnit ?: llmAnalysis.kcalPerUnit,
+                    servingDescription = result.analysis.servingDescription ?: llmAnalysis.servingDescription,
+                    ingredients = if (result.analysis.ingredients.isNotEmpty()) result.analysis.ingredients
+                        else llmAnalysis.ingredients,
+                    confidence = llmAnalysis.confidence
+                )
+                _scanState.value = ScanState.Done(
+                    analysis = merged,
+                    source = FoodSource.BARCODE,
+                    barcode = result.barcode,
+                    imageBytes = null,
+                    imageUrl = result.imageUrl
+                )
+            },
+            onFailure = {
+                _scanState.value = fallbackOff(result)
+            }
+        )
+    }
+
+    private fun fallbackOff(result: OpenFoodFactsResult.Found): ScanState =
+        ScanState.Done(
+            analysis = result.analysis.copy(
+                novaClass = result.analysis.novaClass.coerceAtLeast(1),
+                novaRationale = result.analysis.novaRationale +
+                    " (LLM follow-up unavailable; result may be inaccurate.)",
+                confidence = 0.3
+            ),
+            source = FoodSource.BARCODE,
+            barcode = result.barcode,
+            imageBytes = null,
+            imageUrl = result.imageUrl
+        )
 
     fun onShutter() {
         if (_scanState.value !is ScanState.Idle) return

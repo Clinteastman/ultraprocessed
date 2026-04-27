@@ -39,6 +39,7 @@ import com.ultraprocessed.theme.Tokens
 import com.ultraprocessed.theme.novaColor
 import com.ultraprocessed.ui.MainViewModel
 import com.ultraprocessed.ui.components.NovaDigit
+import com.ultraprocessed.ui.components.NovaScale
 import com.ultraprocessed.ui.components.Overline
 import com.ultraprocessed.ui.components.PrimaryButton
 import com.ultraprocessed.ui.components.SecondaryButton
@@ -100,6 +101,9 @@ fun ResultScreen(
                 )
             }
         }
+
+        Spacer(Modifier.height(Tokens.Space.s5))
+        NovaScale(novaClass = analysis.novaClass)
 
         Spacer(Modifier.height(Tokens.Space.s5))
         Text(

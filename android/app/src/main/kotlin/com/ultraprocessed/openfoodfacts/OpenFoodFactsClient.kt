@@ -60,25 +60,38 @@ class OpenFoodFactsClient(
         val product = outer["product"]?.jsonObject
             ?: return OpenFoodFactsResult.NotFound
 
+        val novaPresent = product["nova_group"]?.numericOrNull() != null
+        val analysis = product.toFoodAnalysis(novaPresent)
+        val nameKnown = analysis.name.isNotBlank() && analysis.name != "Unknown product"
+
         return OpenFoodFactsResult.Found(
             barcode = barcode,
-            analysis = product.toFoodAnalysis(),
-            imageUrl = product.string("image_url")
-                ?: product.string("image_front_url")
+            analysis = analysis,
+            imageUrl = product.string("image_url") ?: product.string("image_front_url"),
+            hasReliableNova = novaPresent,
+            nameKnown = nameKnown
         )
     }
 
-    private fun kotlinx.serialization.json.JsonObject.toFoodAnalysis(): FoodAnalysis {
+    private fun kotlinx.serialization.json.JsonObject.toFoodAnalysis(novaPresent: Boolean): FoodAnalysis {
         val name = string("product_name")?.takeIf { it.isNotBlank() }
             ?: string("generic_name")
             ?: "Unknown product"
         val brand = string("brands")?.split(',')?.firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }
-        val novaClass = (this["nova_group"]?.let { it.numericOrNull() }
-            ?: this["nutriscore_grade"]?.let { null }
-            ?: 3.0).toInt().coerceIn(1, 4)
-        val novaRationale = string("nova_groups_tags")
-            ?.let { "Open Food Facts NOVA group $novaClass ($it)" }
-            ?: "Open Food Facts NOVA group $novaClass"
+        val novaClass = if (novaPresent) {
+            (this["nova_group"]!!.numericOrNull() ?: 3.0).toInt().coerceIn(1, 4)
+        } else {
+            // Don't pretend; the caller will route to LLM classification.
+            // We pick 0 as a sentinel and fix up downstream.
+            0
+        }
+        val novaRationale = if (novaPresent) {
+            string("nova_groups_tags")
+                ?.let { "Open Food Facts NOVA group $novaClass ($it)" }
+                ?: "Open Food Facts NOVA group $novaClass"
+        } else {
+            "Open Food Facts has no NOVA classification for this product."
+        }
         val nutriments = this["nutriments"]?.jsonObject
         val kcalPer100g = nutriments?.numeric("energy-kcal_100g")
             ?: nutriments?.numeric("energy-kcal")
@@ -90,7 +103,7 @@ class OpenFoodFactsClient(
         return FoodAnalysis(
             name = name,
             brand = brand,
-            novaClass = novaClass,
+            novaClass = novaClass.coerceAtLeast(1),
             novaRationale = novaRationale,
             kcalPer100g = kcalPer100g,
             kcalPerUnit = null,
@@ -100,7 +113,7 @@ class OpenFoodFactsClient(
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
                 .take(20),
-            confidence = if (this.containsKey("nova_group")) 0.95 else 0.6
+            confidence = if (novaPresent) 0.95 else 0.4
         )
     }
 
@@ -132,7 +145,11 @@ sealed class OpenFoodFactsResult {
     data class Found(
         val barcode: String,
         val analysis: FoodAnalysis,
-        val imageUrl: String?
+        val imageUrl: String?,
+        /** True when OFF had a real NOVA group; false when we're guessing. */
+        val hasReliableNova: Boolean,
+        /** True when product_name or generic_name resolved to something usable. */
+        val nameKnown: Boolean
     ) : OpenFoodFactsResult()
 
     data object NotFound : OpenFoodFactsResult()

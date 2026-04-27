@@ -29,22 +29,33 @@ internal object Prompt {
         }
 
         NOVA reference:
-          1 - Unprocessed or minimally processed (whole foods, plain milk, simple grains).
-          2 - Processed culinary ingredients (oils, butter, salt, sugar used in cooking).
-          3 - Processed (canned vegetables in brine, simple cheeses, cured meats with few additives).
-          4 - Ultra-processed (formulations with cosmetic additives like emulsifiers,
-              flavour enhancers, modified starches, hydrogenated oils, protein isolates).
+          1 - Unprocessed or minimally processed: whole foods exactly as they grow or
+              with only physical cleaning/cutting. Fresh fruit, fresh vegetables, raw
+              meat, raw fish, plain milk, plain yoghurt, plain grains, eggs, nuts.
+          2 - Processed culinary ingredients: oils, butter, salt, sugar, vinegar - the
+              things you cook WITH, not eat alone.
+          3 - Processed: a few-ingredient combinations of NOVA 1 + NOVA 2 (canned
+              vegetables in brine, simple cheeses, cured meats, fresh bread).
+          4 - Ultra-processed: industrial formulations with cosmetic additives
+              (emulsifiers, flavour enhancers, modified starches, hydrogenated oils,
+              protein isolates, artificial sweeteners, colours).
 
         Rules:
           - Output JSON only. No prose, no Markdown, no code fences.
-          - If you cannot identify the food at all, set name to "Unknown food",
-            novaClass to 3, novaRationale to a brief explanation, and confidence to 0.2.
-          - If only a category is identifiable (e.g. "fresh apple"), it's fine to
-            leave brand null and provide a typical kcalPerUnit estimate.
-          - If specific ingredients (e.g. emulsifier E471, soy lecithin, modified starch)
-            justify a NOVA 4 verdict, list them first in ingredients.
-          - For unbranded raw foods (apple, banana, plain rice), confidence may be 0.9+;
-            for ambiguous mixed dishes from a photo, keep confidence below 0.6.
+          - WHOLE FOODS ARE NOVA 1. A fresh mango from Brazil is NOVA 1. An apple is
+            NOVA 1. A piece of raw chicken is NOVA 1. Plain rice is NOVA 1. Country
+            stickers, supermarket logos, or PLU labels do NOT make a whole food more
+            processed. Use confidence 0.9+ for any clearly recognizable whole food.
+          - Always set `name` to the food itself when you can tell what it is, even
+            without brand or origin. "Mango", "Apple", "Banana" - not "Unknown food".
+          - For packaged items, use the ingredient list to decide. Multiple cosmetic
+            additives (E-numbers, flavour enhancers, emulsifiers, sweeteners) -> NOVA 4.
+            One or two simple ingredients (e.g. "milk, salt, rennet") -> NOVA 3 or lower.
+          - Only return name="Unknown food", novaClass=3, confidence=0.2 when you
+            genuinely cannot identify what's in the image at all (blurry, unclear,
+            no recognizable shape).
+          - For unbranded items, leave brand null. Provide a typical kcalPer100g and
+            kcalPerUnit when you can (e.g., a medium apple ≈ 95 kcal).
     """.trimIndent()
 
     /**

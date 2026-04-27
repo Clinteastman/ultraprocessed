@@ -33,6 +33,7 @@ import coil.compose.AsyncImage
 import com.ultraprocessed.data.dao.ConsumptionWithFood
 import com.ultraprocessed.theme.Semantic
 import com.ultraprocessed.theme.Tokens
+import com.ultraprocessed.theme.novaColor
 import com.ultraprocessed.ui.components.NovaPill
 import com.ultraprocessed.ui.components.Overline
 import kotlinx.coroutines.flow.Flow
@@ -138,11 +139,13 @@ private fun DayHeader(label: String, items: List<ConsumptionWithFood>) {
 @Composable
 private fun HistoryRow(item: ConsumptionWithFood) {
     val timeFormatter = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val accent = novaColor(item.food.novaClass)
+    val tintAlpha = if (Semantic.colors.isDark) 0.16f else 0.14f
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(Tokens.Radius.md))
-            .background(Semantic.colors.surface1)
+            .background(accent.copy(alpha = tintAlpha))
             .padding(Tokens.Space.s3),
         verticalAlignment = Alignment.CenterVertically
     ) {
