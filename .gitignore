@@ -1,0 +1,80 @@
+# Android / Gradle
+.gradle/
+build/
+captures/
+.cxx/
+local.properties
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+proguard/
+.kotlin/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / SvelteKit
+node_modules/
+.svelte-kit/
+.vercel/
+dist/
+build/
+.turbo/
+*.log
+.npm/
+.pnpm-store/
+.yarn/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+*.code-workspace
+.history/
+
+# Secrets / env
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.keystore
+*.jks
+keystore.properties
+
+# Backend SQLite data
+backend/data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker
+*.tar
+
+# Misc
+.cache/
+coverage/
