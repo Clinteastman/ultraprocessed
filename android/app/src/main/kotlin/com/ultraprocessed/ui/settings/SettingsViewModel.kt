@@ -18,6 +18,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
+/**
+ * Draft + saved model: every field edit updates the draft only; Save
+ * persists everything to Settings + EncryptedSharedPreferences in one
+ * shot. The screen calls [refresh] on every entry so changes made
+ * elsewhere (e.g. QR pairing) show up immediately.
+ */
 class SettingsViewModel(
     private val settings: Settings,
     private val secrets: SecretStore,
@@ -28,8 +34,12 @@ class SettingsViewModel(
     val state: StateFlow<SettingsState> = _state.asStateFlow()
 
     init {
+        refresh()
+    }
+
+    fun refresh() {
         viewModelScope.launch {
-            _state.value = SettingsState(
+            val values = SettingsValues(
                 provider = settings.provider.first(),
                 baseUrl = settings.providerBaseUrl.first(),
                 model = settings.providerModel.first(),
@@ -38,64 +48,78 @@ class SettingsViewModel(
                 backendToken = secrets.backendToken.orEmpty(),
                 relayThroughBackend = settings.relayThroughBackend.first()
             )
-        }
-    }
-
-    fun setProvider(p: ProviderType) {
-        viewModelScope.launch {
-            settings.setProvider(p)
-            settings.setProviderBaseUrl(p.defaultBaseUrl)
-            settings.setProviderModel(p.defaultModel)
             _state.value = _state.value.copy(
-                provider = p,
-                baseUrl = p.defaultBaseUrl,
-                model = p.defaultModel
+                saved = values,
+                draft = values,
+                saveStatus = SaveStatus.Idle,
+                pairStatus = PairStatus.Idle
             )
         }
     }
 
-    fun updateBaseUrl(url: String) {
-        _state.value = _state.value.copy(baseUrl = url)
-        viewModelScope.launch { settings.setProviderBaseUrl(url) }
-    }
-
-    fun updateModel(model: String) {
-        _state.value = _state.value.copy(model = model)
-        viewModelScope.launch { settings.setProviderModel(model) }
-    }
-
-    fun updateApiKey(key: String) {
-        _state.value = _state.value.copy(apiKey = key)
-        secrets.providerApiKey = key
-    }
-
-    fun updateBackendUrl(url: String) {
+    fun setProvider(p: ProviderType) {
         _state.value = _state.value.copy(
-            backendUrl = url,
-            pairStatus = PairStatus.Idle
+            draft = _state.value.draft.copy(
+                provider = p,
+                baseUrl = p.defaultBaseUrl,
+                model = p.defaultModel
+            ),
+            saveStatus = SaveStatus.Idle
         )
-        viewModelScope.launch { settings.setBackendBaseUrl(url.takeIf { it.isNotBlank() }) }
     }
 
-    fun updateBackendToken(token: String) {
-        _state.value = _state.value.copy(backendToken = token, pairStatus = PairStatus.Idle)
-        secrets.backendToken = token
+    fun updateBaseUrl(url: String) = patchDraft { it.copy(baseUrl = url) }
+    fun updateModel(model: String) = patchDraft { it.copy(model = model) }
+    fun updateApiKey(key: String) = patchDraft { it.copy(apiKey = key) }
+    fun updateBackendUrl(url: String) = patchDraft { it.copy(backendUrl = url) }
+    fun updateBackendToken(token: String) = patchDraft { it.copy(backendToken = token) }
+    fun setRelayThroughBackend(value: Boolean) = patchDraft { it.copy(relayThroughBackend = value) }
+
+    private inline fun patchDraft(transform: (SettingsValues) -> SettingsValues) {
+        _state.value = _state.value.copy(
+            draft = transform(_state.value.draft),
+            saveStatus = SaveStatus.Idle
+        )
     }
 
-    fun setRelayThroughBackend(value: Boolean) {
-        _state.value = _state.value.copy(relayThroughBackend = value)
-        viewModelScope.launch { settings.setRelayThroughBackend(value) }
+    /** Persists the current draft to Settings + SecretStore. */
+    fun save() {
+        val draft = _state.value.draft
+        _state.value = _state.value.copy(saveStatus = SaveStatus.InFlight)
+        viewModelScope.launch {
+            settings.setProvider(draft.provider)
+            settings.setProviderBaseUrl(draft.baseUrl)
+            settings.setProviderModel(draft.model)
+            settings.setBackendBaseUrl(draft.backendUrl.takeIf { it.isNotBlank() })
+            settings.setRelayThroughBackend(draft.relayThroughBackend)
+            secrets.providerApiKey = draft.apiKey
+            secrets.backendToken = draft.backendToken
+            _state.value = _state.value.copy(
+                saved = draft,
+                saveStatus = SaveStatus.Saved
+            )
+        }
+    }
+
+    /** Throws away unsaved edits; reverts the draft to the saved values. */
+    fun discard() {
+        _state.value = _state.value.copy(
+            draft = _state.value.saved,
+            saveStatus = SaveStatus.Idle
+        )
     }
 
     /**
-     * Asks the backend for a fresh device token and stashes it. Uses the
-     * phone's model name (e.g. "Pixel 8 Pro") as the device name so the
-     * dashboard's later device list reads sensibly.
+     * Asks the backend for a fresh device token and stashes it. Token
+     * lands in the draft *and* is auto-saved, since the user clearly
+     * wanted that value to apply.
      */
     fun pair() {
-        val url = _state.value.backendUrl
+        val url = _state.value.draft.backendUrl
         if (url.isBlank()) {
-            _state.value = _state.value.copy(pairStatus = PairStatus.Failed("Set a Backend URL first."))
+            _state.value = _state.value.copy(
+                pairStatus = PairStatus.Failed("Set a Backend URL first.")
+            )
             return
         }
         _state.value = _state.value.copy(pairStatus = PairStatus.InFlight)
@@ -104,11 +128,12 @@ class SettingsViewModel(
             val result = client.pair(deviceName = "${Build.MANUFACTURER} ${Build.MODEL}".trim())
             result.fold(
                 onSuccess = { tokenResp ->
-                    secrets.backendToken = tokenResp.token
+                    val newDraft = _state.value.draft.copy(backendToken = tokenResp.token)
                     _state.value = _state.value.copy(
-                        backendToken = tokenResp.token,
+                        draft = newDraft,
                         pairStatus = PairStatus.Success("Paired as device #${tokenResp.deviceId}")
                     )
+                    save()
                 },
                 onFailure = { err ->
                     _state.value = _state.value.copy(
@@ -130,16 +155,30 @@ class SettingsViewModel(
     }
 }
 
-data class SettingsState(
+data class SettingsValues(
     val provider: ProviderType = ProviderType.Anthropic,
     val baseUrl: String = ProviderType.Anthropic.defaultBaseUrl,
     val model: String = ProviderType.Anthropic.defaultModel,
     val apiKey: String = "",
     val backendUrl: String = "",
     val backendToken: String = "",
-    val relayThroughBackend: Boolean = false,
-    val pairStatus: PairStatus = PairStatus.Idle
+    val relayThroughBackend: Boolean = false
 )
+
+data class SettingsState(
+    val saved: SettingsValues = SettingsValues(),
+    val draft: SettingsValues = SettingsValues(),
+    val saveStatus: SaveStatus = SaveStatus.Idle,
+    val pairStatus: PairStatus = PairStatus.Idle
+) {
+    val dirty: Boolean get() = saved != draft
+}
+
+sealed class SaveStatus {
+    data object Idle : SaveStatus()
+    data object InFlight : SaveStatus()
+    data object Saved : SaveStatus()
+}
 
 sealed class PairStatus {
     data object Idle : PairStatus()

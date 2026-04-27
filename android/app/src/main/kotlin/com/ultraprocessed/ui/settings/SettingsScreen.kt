@@ -1,5 +1,10 @@
 package com.ultraprocessed.ui.settings
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +31,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -33,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ultraprocessed.data.settings.ProviderType
@@ -47,110 +54,127 @@ fun SettingsScreen(
 ) {
     val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)
     val state by vm.state.collectAsState()
+    val draft = state.draft
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Semantic.colors.bg)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = Tokens.Space.s5)
-    ) {
-        Spacer(Modifier.height(Tokens.Space.s7))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier.size(40.dp).clickable(onClick = onBack),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = Semantic.colors.inkHigh
-                )
-            }
-            Spacer(Modifier.size(Tokens.Space.s2))
-            Text(
-                text = "Settings",
-                style = MaterialTheme.typography.displaySmall,
-                color = Semantic.colors.inkHigh
-            )
-        }
+    LaunchedEffect(Unit) { vm.refresh() }
 
-        Spacer(Modifier.height(Tokens.Space.s6))
-        SectionHeader("Provider")
-        ProviderSwitch(
-            selected = state.provider,
-            onChange = vm::setProvider
-        )
-
-        Spacer(Modifier.height(Tokens.Space.s4))
-        Field(label = "Base URL", value = state.baseUrl, onValueChange = vm::updateBaseUrl)
-        Spacer(Modifier.height(Tokens.Space.s3))
-        Field(label = "Model", value = state.model, onValueChange = vm::updateModel)
-        Spacer(Modifier.height(Tokens.Space.s3))
-        Field(
-            label = "API key",
-            value = state.apiKey,
-            onValueChange = vm::updateApiKey,
-            secret = true,
-            helper = "Stored on device, encrypted."
-        )
-
-        Spacer(Modifier.height(Tokens.Space.s7))
-        SectionHeader("Backend (optional)")
-        Text(
-            text = "Easiest: open your dashboard's Settings page on a laptop, tap " +
-                "\"Pair a device\", then scan the QR with the button below.",
-            color = Semantic.colors.inkMid,
-            style = MaterialTheme.typography.bodyMedium
-        )
-        Spacer(Modifier.height(Tokens.Space.s3))
-        ScanPairingQrButton(onClick = onScanPairingQr)
-        Spacer(Modifier.height(Tokens.Space.s5))
-        Overline(text = "Or set manually")
-        Spacer(Modifier.height(Tokens.Space.s2))
-        Field(label = "Backend URL", value = state.backendUrl, onValueChange = vm::updateBackendUrl)
-        Spacer(Modifier.height(Tokens.Space.s3))
-        Field(
-            label = "Device token",
-            value = state.backendToken,
-            onValueChange = vm::updateBackendToken,
-            secret = true
-        )
-        Spacer(Modifier.height(Tokens.Space.s3))
-        PairBackendButton(
-            status = state.pairStatus,
-            enabled = state.backendUrl.isNotBlank(),
-            onClick = vm::pair
-        )
-        Spacer(Modifier.height(Tokens.Space.s4))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+    Box(modifier = Modifier.fillMaxSize().background(Semantic.colors.bg)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = Tokens.Space.s5)
+                .padding(bottom = if (state.dirty) 96.dp else Tokens.Space.s8)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Spacer(Modifier.height(Tokens.Space.s7))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier.size(40.dp).clickable(onClick = onBack),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Semantic.colors.inkHigh
+                    )
+                }
+                Spacer(Modifier.size(Tokens.Space.s2))
                 Text(
-                    text = "Relay analyses through backend",
-                    color = Semantic.colors.inkHigh,
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Text(
-                    text = "When enabled, the phone never sees a provider key.",
-                    color = Semantic.colors.inkMid,
-                    style = MaterialTheme.typography.bodySmall
+                    text = "Settings",
+                    style = MaterialTheme.typography.displaySmall,
+                    color = Semantic.colors.inkHigh
                 )
             }
-            Switch(
-                checked = state.relayThroughBackend,
-                onCheckedChange = vm::setRelayThroughBackend,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Semantic.colors.accent,
-                    checkedTrackColor = Semantic.colors.accent.copy(alpha = 0.3f)
-                )
+
+            Spacer(Modifier.height(Tokens.Space.s6))
+            SectionHeader("Provider")
+            ProviderSwitch(selected = draft.provider, onChange = vm::setProvider)
+
+            Spacer(Modifier.height(Tokens.Space.s4))
+            Field(label = "Base URL", value = draft.baseUrl, onValueChange = vm::updateBaseUrl)
+            Spacer(Modifier.height(Tokens.Space.s3))
+            Field(label = "Model", value = draft.model, onValueChange = vm::updateModel)
+            Spacer(Modifier.height(Tokens.Space.s3))
+            Field(
+                label = "API key",
+                value = draft.apiKey,
+                onValueChange = vm::updateApiKey,
+                secret = true,
+                helper = "Stored on device, encrypted."
             )
+
+            Spacer(Modifier.height(Tokens.Space.s7))
+            SectionHeader("Backend (optional)")
+            Text(
+                text = "Easiest: open your dashboard's Settings page on a laptop, " +
+                    "tap \"Pair a device\", then scan the QR with the button below.",
+                color = Semantic.colors.inkMid,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(Modifier.height(Tokens.Space.s3))
+            ScanPairingQrButton(onClick = onScanPairingQr)
+            Spacer(Modifier.height(Tokens.Space.s5))
+            Overline(text = "Or set manually")
+            Spacer(Modifier.height(Tokens.Space.s2))
+            Field(label = "Backend URL", value = draft.backendUrl, onValueChange = vm::updateBackendUrl)
+            Spacer(Modifier.height(Tokens.Space.s3))
+            Field(
+                label = "Device token",
+                value = draft.backendToken,
+                onValueChange = vm::updateBackendToken,
+                secret = true
+            )
+            Spacer(Modifier.height(Tokens.Space.s3))
+            PairBackendButton(
+                status = state.pairStatus,
+                enabled = draft.backendUrl.isNotBlank(),
+                onClick = vm::pair
+            )
+            Spacer(Modifier.height(Tokens.Space.s4))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Relay analyses through backend",
+                        color = Semantic.colors.inkHigh,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        text = "When enabled, the phone never sees a provider key.",
+                        color = Semantic.colors.inkMid,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Switch(
+                    checked = draft.relayThroughBackend,
+                    onCheckedChange = vm::setRelayThroughBackend,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Semantic.colors.accent,
+                        checkedTrackColor = Semantic.colors.accent.copy(alpha = 0.3f)
+                    )
+                )
+            }
+
+            if (state.saveStatus is SaveStatus.Saved && !state.dirty) {
+                Spacer(Modifier.height(Tokens.Space.s4))
+                Text(
+                    text = "Saved.",
+                    color = Semantic.colors.success,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
         }
 
-        Spacer(Modifier.height(Tokens.Space.s8))
+        SaveBar(
+            visible = state.dirty,
+            saving = state.saveStatus is SaveStatus.InFlight,
+            onSave = vm::save,
+            onDiscard = vm::discard,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }
 
@@ -209,7 +233,7 @@ private fun Field(
             onValueChange = onValueChange,
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            visualTransformation = if (secret) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+            visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions = KeyboardOptions(
                 keyboardType = if (secret) KeyboardType.Password else KeyboardType.Text
             ),
@@ -297,6 +321,68 @@ private fun PairBackendButton(
                 )
             }
             else -> Unit
+        }
+    }
+}
+
+@Composable
+private fun SaveBar(
+    visible: Boolean,
+    saving: Boolean,
+    onSave: () -> Unit,
+    onDiscard: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Semantic.colors.surface2)
+                .padding(horizontal = Tokens.Space.s5, vertical = Tokens.Space.s4),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Tokens.Space.s3)
+        ) {
+            Text(
+                text = "Unsaved changes",
+                color = Semantic.colors.inkHigh,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            Box(
+                modifier = Modifier
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(Tokens.Radius.md))
+                    .background(Semantic.colors.surface3)
+                    .clickable(onClick = onDiscard)
+                    .padding(horizontal = Tokens.Space.s4),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Discard",
+                    color = Semantic.colors.inkHigh,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(Tokens.Radius.md))
+                    .background(if (saving) Semantic.colors.surface3 else Semantic.colors.accent)
+                    .clickable(enabled = !saving, onClick = onSave)
+                    .padding(horizontal = Tokens.Space.s5),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (saving) "Saving..." else "Save",
+                    color = if (saving) Semantic.colors.inkLow else Semantic.colors.inkInverse,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
         }
     }
 }
