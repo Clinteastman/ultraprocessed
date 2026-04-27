@@ -11,6 +11,37 @@
   let payload = $state<string | null>(null);
   let originWarning = $state<string | null>(null);
 
+  // ----- Export -----
+  let exporting = $state<"json" | "sqlite" | null>(null);
+  let exportError = $state<string | null>(null);
+
+  async function downloadExport(kind: "json" | "sqlite") {
+    exporting = kind;
+    exportError = null;
+    try {
+      const token = localStorage.getItem("ultraprocessed.token") ?? "";
+      const resp = await fetch(`/api/v1/export/${kind}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+      const blob = await resp.blob();
+      const today = new Date().toISOString().slice(0, 10);
+      const filename = `ultraprocessed-${today}.${kind === "json" ? "json" : "db"}`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      exportError = (e as Error).message;
+    } finally {
+      exporting = null;
+    }
+  }
+
   // ----- Calorie target -----
   let calorieTarget = $state<number>(2000);
   let calorieDirty = $state(false);
@@ -204,6 +235,51 @@
       </button>
       {#if fastingSaved}<span class="text-sm text-nova-1">Saved.</span>{/if}
     </div>
+  </section>
+
+  <!-- Export -->
+  <section class="rounded-lg bg-surface-1 p-6 space-y-4">
+    <div>
+      <p class="text-xs uppercase tracking-wider text-ink-mid">Export your data</p>
+      <p class="text-sm text-ink-mid mt-1">
+        Download everything you've logged. Two formats:
+      </p>
+      <ul class="text-sm text-ink-mid list-disc pl-5 mt-2 space-y-1">
+        <li>
+          <span class="text-ink-hi">JSON</span> &mdash; portable, human-readable.
+          Foods, consumption logs, fasting profiles and targets in one file.
+        </li>
+        <li>
+          <span class="text-ink-hi">SQLite</span> &mdash; the raw database file
+          (consistent .backup snapshot). Restore-able to a fresh instance.
+        </li>
+      </ul>
+    </div>
+    <div class="flex flex-wrap gap-3">
+      <button
+        type="button"
+        onclick={() => downloadExport("json")}
+        disabled={exporting !== null}
+        class="rounded-md bg-surface-2 text-ink-hi font-medium px-4 py-2 hover:bg-surface-3 transition-colors disabled:opacity-50"
+      >
+        {exporting === "json" ? "Preparing..." : "Download JSON"}
+      </button>
+      <button
+        type="button"
+        onclick={() => downloadExport("sqlite")}
+        disabled={exporting !== null}
+        class="rounded-md bg-surface-2 text-ink-hi font-medium px-4 py-2 hover:bg-surface-3 transition-colors disabled:opacity-50"
+      >
+        {exporting === "sqlite" ? "Preparing..." : "Download SQLite"}
+      </button>
+    </div>
+    {#if exportError}
+      <p class="text-sm text-nova-4">{exportError}</p>
+    {/if}
+    <p class="text-xs text-ink-lo">
+      Tip: schedule the SQLite endpoint via cron on a different machine for
+      automatic off-host backups.
+    </p>
   </section>
 
   <!-- Phone pairing -->
