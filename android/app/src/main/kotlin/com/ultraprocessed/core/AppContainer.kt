@@ -1,16 +1,40 @@
 package com.ultraprocessed.core
 
 import android.content.Context
+import com.ultraprocessed.data.AppDatabase
+import com.ultraprocessed.data.repository.ConsumptionRepository
+import com.ultraprocessed.data.repository.FastingRepository
+import com.ultraprocessed.data.repository.FoodRepository
+import com.ultraprocessed.data.settings.SecretStore
+import com.ultraprocessed.data.settings.Settings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /**
  * Manual service locator. Created once in the Application and exposes
- * lazily-initialised app-wide singletons. Each subsystem (data, analyzer,
- * camera, sync) extends this container as it lands.
+ * lazily-initialised app-wide singletons. Avoids the boilerplate of a DI
+ * framework while keeping wiring explicit.
  */
-class AppContainer(private val applicationContext: Context) {
-    // Subsystems get added here as they're built:
-    //   val database: AppDatabase by lazy { ... }
-    //   val analyzerFactory: AnalyzerFactory by lazy { ... }
-    //   val openFoodFactsClient: OpenFoodFactsClient by lazy { ... }
-    //   val syncWorker: SyncWorker by lazy { ... }
+class AppContainer(applicationContext: Context) {
+
+    val applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    val database: AppDatabase by lazy { AppDatabase.build(applicationContext) }
+
+    val foodRepository: FoodRepository by lazy { FoodRepository(database.foodEntryDao()) }
+    val consumptionRepository: ConsumptionRepository by lazy {
+        ConsumptionRepository(database.consumptionLogDao())
+    }
+    val fastingRepository: FastingRepository by lazy {
+        FastingRepository(database.fastingProfileDao())
+    }
+
+    val settings: Settings by lazy { Settings(applicationContext) }
+    val secrets: SecretStore by lazy { SecretStore(applicationContext) }
+
+    // Subsystems wired in subsequent tasks:
+    //   val analyzerFactory: AnalyzerFactory
+    //   val openFoodFactsClient: OpenFoodFactsClient
+    //   val syncCoordinator: SyncCoordinator
 }
