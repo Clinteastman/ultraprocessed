@@ -1,131 +1,77 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { api, getBaseUrl, getToken, setBaseUrl, setToken } from "$lib/api/client";
+  import { api } from "$lib/api/client";
 
-  let baseUrl = $state("");
-  let token = $state("");
-  let deviceName = $state("dashboard");
-  let pairing = $state(false);
-  let testStatus = $state<string | null>(null);
-  let pairError = $state<string | null>(null);
+  let phoneToken = $state<string | null>(null);
+  let issuingPhoneToken = $state(false);
+  let phoneTokenError = $state<string | null>(null);
+  let copied = $state(false);
 
-  onMount(() => {
-    baseUrl = getBaseUrl();
-    token = getToken();
-  });
-
-  function save() {
-    setBaseUrl(baseUrl);
-    setToken(token);
-    testStatus = "Saved.";
-  }
-
-  async function pair() {
-    pairing = true;
-    pairError = null;
+  async function issuePhoneToken() {
+    issuingPhoneToken = true;
+    phoneTokenError = null;
+    copied = false;
     try {
-      setBaseUrl(baseUrl);
-      const result = await api.pair(deviceName);
-      token = result.token;
-      setToken(token);
-      testStatus = "Paired. Token saved.";
+      const result = await api.pair("phone");
+      phoneToken = result.token;
     } catch (e) {
-      pairError = (e as Error).message;
+      phoneTokenError = (e as Error).message;
     } finally {
-      pairing = false;
+      issuingPhoneToken = false;
     }
   }
 
-  async function test() {
-    testStatus = "Checking...";
+  async function copyPhoneToken() {
+    if (!phoneToken) return;
     try {
-      setBaseUrl(baseUrl);
-      setToken(token);
-      const me = await api.whoami();
-      testStatus = `OK. Logged in as device #${me.device_id} (${me.device_name}) for user #${me.user_id}.`;
-    } catch (e) {
-      testStatus = `Failed: ${(e as Error).message}`;
+      await navigator.clipboard.writeText(phoneToken);
+      copied = true;
+      setTimeout(() => (copied = false), 2000);
+    } catch {
+      /* user can copy manually */
     }
   }
 </script>
 
 <svelte:head><title>Settings · Ultraprocessed</title></svelte:head>
 
-<div class="space-y-6 max-w-xl">
+<div class="space-y-10 max-w-2xl">
   <div>
     <h2 class="font-display text-3xl">Settings</h2>
-    <p class="text-ink-mid text-sm mt-1">
-      Stored in your browser's localStorage. Only this device sees the token.
+    <p class="text-ink-mid text-sm mt-2">
+      The dashboard runs in the same container as the API. Nothing to point anywhere - this page is just for connecting phones.
     </p>
   </div>
 
-  <div class="space-y-4">
-    <label class="block">
-      <span class="text-xs uppercase tracking-wider text-ink-mid">Backend URL</span>
-      <input
-        type="url"
-        bind:value={baseUrl}
-        placeholder="https://ultraprocessed.example.com"
-        class="mt-1 w-full rounded-sm bg-surface-1 border border-surface-3 px-3 py-2 text-ink-hi focus:border-accent focus:outline-none"
-      />
-      <p class="text-xs text-ink-lo mt-1">
-        Leave blank if the dashboard is served from the backend itself.
+  <section class="rounded-lg bg-surface-1 p-6 space-y-4">
+    <div>
+      <p class="text-xs uppercase tracking-wider text-ink-mid">Pair a phone</p>
+      <p class="text-sm text-ink-mid mt-1">
+        In the Android app, open Settings, set <span class="text-ink-hi">Backend URL</span> to wherever this dashboard is hosted, then either tap <span class="text-ink-hi">Pair</span> in the app, or generate a token here and paste it as the <span class="text-ink-hi">Device token</span>.
       </p>
-    </label>
-
-    <label class="block">
-      <span class="text-xs uppercase tracking-wider text-ink-mid">Device token</span>
-      <input
-        type="password"
-        bind:value={token}
-        class="mt-1 w-full rounded-sm bg-surface-1 border border-surface-3 px-3 py-2 text-ink-hi focus:border-accent focus:outline-none"
-      />
-    </label>
-
-    <div class="flex gap-3">
-      <button
-        type="button"
-        onclick={save}
-        class="rounded-md bg-accent text-ink-inv font-semibold px-4 py-2 hover:bg-accent-press transition-colors"
-      >
-        Save
-      </button>
-      <button
-        type="button"
-        onclick={test}
-        class="rounded-md bg-surface-2 text-ink-hi font-medium px-4 py-2 hover:bg-surface-3 transition-colors"
-      >
-        Test connection
-      </button>
     </div>
-    {#if testStatus}
-      <p class="text-sm text-ink-mid">{testStatus}</p>
-    {/if}
-  </div>
-
-  <div class="border-t border-surface-3 pt-6 space-y-3">
-    <p class="text-xs uppercase tracking-wider text-ink-mid">Or pair fresh</p>
-    <p class="text-sm text-ink-mid">
-      Issues a brand-new device token (single-user mode adds a new device for the same user).
-    </p>
-    <label class="block">
-      <span class="text-xs uppercase tracking-wider text-ink-mid">Device name</span>
-      <input
-        type="text"
-        bind:value={deviceName}
-        class="mt-1 w-full rounded-sm bg-surface-1 border border-surface-3 px-3 py-2 text-ink-hi focus:border-accent focus:outline-none"
-      />
-    </label>
     <button
       type="button"
-      onclick={pair}
-      disabled={pairing || !baseUrl}
-      class="rounded-md bg-surface-2 text-ink-hi font-medium px-4 py-2 hover:bg-surface-3 transition-colors disabled:opacity-50"
+      onclick={issuePhoneToken}
+      disabled={issuingPhoneToken}
+      class="rounded-md bg-accent text-ink-inv font-semibold px-4 py-2 hover:bg-accent-press transition-colors disabled:opacity-50"
     >
-      {pairing ? "Pairing..." : "Pair this browser"}
+      {issuingPhoneToken ? "Generating..." : "Generate phone token"}
     </button>
-    {#if pairError}
-      <p class="text-sm text-nova-4">{pairError}</p>
+    {#if phoneTokenError}
+      <p class="text-sm text-nova-4">{phoneTokenError}</p>
     {/if}
-  </div>
+    {#if phoneToken}
+      <div class="rounded-md bg-surface-2 p-4 space-y-3">
+        <p class="text-xs uppercase tracking-wider text-ink-mid">Phone token (one-time view)</p>
+        <code class="block break-all font-mono text-sm text-ink-hi">{phoneToken}</code>
+        <button
+          type="button"
+          onclick={copyPhoneToken}
+          class="text-sm rounded-md bg-surface-3 text-ink-hi px-3 py-1 hover:bg-surface-3/70 transition-colors"
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+    {/if}
+  </section>
 </div>

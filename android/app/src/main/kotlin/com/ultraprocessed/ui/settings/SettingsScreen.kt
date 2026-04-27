@@ -102,6 +102,12 @@ fun SettingsScreen(onBack: () -> Unit) {
             onValueChange = vm::updateBackendToken,
             secret = true
         )
+        Spacer(Modifier.height(Tokens.Space.s3))
+        PairBackendButton(
+            status = state.pairStatus,
+            enabled = state.backendUrl.isNotBlank(),
+            onClick = vm::pair
+        )
         Spacer(Modifier.height(Tokens.Space.s4))
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -210,6 +216,54 @@ private fun Field(
                 color = Semantic.colors.inkLow,
                 style = MaterialTheme.typography.bodySmall
             )
+        }
+    }
+}
+
+@Composable
+private fun PairBackendButton(
+    status: PairStatus,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val inFlight = status is PairStatus.InFlight
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(RoundedCornerShape(Tokens.Radius.md))
+                .background(
+                    if (enabled && !inFlight) Semantic.colors.accent
+                    else Semantic.colors.surface3
+                )
+                .clickable(enabled = enabled && !inFlight, onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (inFlight) "Pairing..." else "Pair with backend",
+                color = if (enabled && !inFlight) Semantic.colors.inkInverse else Semantic.colors.inkLow,
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+        when (status) {
+            is PairStatus.Success -> {
+                Spacer(Modifier.height(Tokens.Space.s2))
+                Text(
+                    text = status.message,
+                    color = Semantic.colors.success,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            is PairStatus.Failed -> {
+                Spacer(Modifier.height(Tokens.Space.s2))
+                Text(
+                    text = status.message,
+                    color = Semantic.colors.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            else -> Unit
         }
     }
 }

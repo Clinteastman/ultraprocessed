@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, getToken, ApiError } from "$lib/api/client";
+  import { api, ApiError } from "$lib/api/client";
   import type { AggregateResponse } from "$lib/api/types";
   import NovaPill from "$lib/components/NovaPill.svelte";
   import NutrientBar from "$lib/components/NutrientBar.svelte";
@@ -25,11 +25,6 @@
   };
 
   onMount(async () => {
-    if (!getToken()) {
-      error = "Not configured. Open Settings to add your backend URL and device token.";
-      loading = false;
-      return;
-    }
     try {
       data = await api.today();
     } catch (e) {

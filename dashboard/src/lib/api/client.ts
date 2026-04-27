@@ -5,18 +5,13 @@ import type {
   HaSnapshot
 } from "./types";
 
-const STORAGE_KEY_BASE = "ultraprocessed.baseUrl";
 const STORAGE_KEY_TOKEN = "ultraprocessed.token";
 
-export function getBaseUrl(): string {
-  if (typeof localStorage === "undefined") return "";
-  return localStorage.getItem(STORAGE_KEY_BASE) ?? "";
-}
-
-export function setBaseUrl(value: string): void {
-  if (typeof localStorage === "undefined") return;
-  localStorage.setItem(STORAGE_KEY_BASE, value);
-}
+/**
+ * The dashboard is always served by the backend container, so all API
+ * calls are same-origin. Vite's dev server proxies /api/* to the local
+ * backend (see vite.config.ts), so `pnpm dev` works the same way.
+ */
 
 export function getToken(): string {
   if (typeof localStorage === "undefined") return "";
@@ -28,12 +23,9 @@ export function setToken(value: string): void {
   localStorage.setItem(STORAGE_KEY_TOKEN, value);
 }
 
-function buildUrl(path: string): string {
-  const base = getBaseUrl();
-  // Same-origin in production (backend serves the dashboard); explicit
-  // base URL when running `vite dev` against a remote backend.
-  if (!base) return path;
-  return `${base.replace(/\/$/, "")}${path}`;
+export function clearToken(): void {
+  if (typeof localStorage === "undefined") return;
+  localStorage.removeItem(STORAGE_KEY_TOKEN);
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -43,7 +35,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (init?.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const response = await fetch(buildUrl(path), { ...init, headers });
+  const response = await fetch(path, { ...init, headers });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new ApiError(response.status, body || response.statusText);
@@ -79,4 +71,15 @@ export const api = {
   }
 };
 
-export { STORAGE_KEY_BASE, STORAGE_KEY_TOKEN };
+/**
+ * Idempotent first-load auth: if no token is stored, request a fresh one.
+ * Single-user mode means this just creates a new device row each time;
+ * multi-user mode (later) will gate this behind a real sign-in.
+ */
+export async function ensurePaired(deviceName = "browser"): Promise<void> {
+  if (getToken()) return;
+  const result = await api.pair(deviceName);
+  setToken(result.token);
+}
+
+export { STORAGE_KEY_TOKEN };
