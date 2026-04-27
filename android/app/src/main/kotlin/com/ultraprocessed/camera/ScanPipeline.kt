@@ -1,9 +1,10 @@
 package com.ultraprocessed.camera
 
 import android.content.Context
-import androidx.annotation.OptIn
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import androidx.camera.core.CameraSelector
-import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -14,13 +15,10 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import com.google.mlkit.vision.common.InputImage
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -88,23 +86,50 @@ class ScanPipeline(private val context: Context) {
         }
 
     /**
-     * Captures one frame, encodes it as JPEG, and runs OCR against it.
+     * Captures one frame, runs OCR against the bitmap, and returns a
+     * rotated JPEG byte array suitable for vision LLMs.
+     *
+     * ImageCapture defaults to JPEG output, so we decode the buffer to a
+     * Bitmap (ML Kit's fromMediaImage only accepts YUV) and use
+     * fromBitmap() with the rotation degrees instead.
      */
-    @OptIn(ExperimentalGetImage::class)
     suspend fun capture(): ScanCapture = withContext(Dispatchers.IO) {
         val proxy: ImageProxy = takeOnce()
         try {
-            val mediaImage = proxy.image
-                ?: throw IllegalStateException("no media image on capture")
             val rotation = proxy.imageInfo.rotationDegrees
-            val inputImage = InputImage.fromMediaImage(mediaImage, rotation)
+
+            val rawJpeg = ByteArray(proxy.planes[0].buffer.remaining()).also {
+                proxy.planes[0].buffer.get(it)
+            }
+
+            val bitmap = BitmapFactory.decodeByteArray(rawJpeg, 0, rawJpeg.size)
+                ?: throw IllegalStateException("could not decode captured JPEG")
+
+            val inputImage = InputImage.fromBitmap(bitmap, rotation)
             val text = runCatching { ocr.recognize(inputImage) }.getOrDefault("")
-            val jpegBytes = proxy.toJpeg()
-            ScanCapture(jpegBytes, text)
+
+            val rotatedJpeg = if (rotation != 0) {
+                val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
+                val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+                val bytes = rotated.encodeToJpeg()
+                if (rotated !== bitmap) rotated.recycle()
+                bytes
+            } else {
+                rawJpeg
+            }
+
+            bitmap.recycle()
+            ScanCapture(rotatedJpeg, text)
         } finally {
             proxy.close()
         }
     }
+
+    private fun Bitmap.encodeToJpeg(quality: Int = 85): ByteArray =
+        ByteArrayOutputStream().use {
+            compress(Bitmap.CompressFormat.JPEG, quality, it)
+            it.toByteArray()
+        }
 
     private suspend fun takeOnce(): ImageProxy = suspendCancellableCoroutine { cont ->
         captureUseCase.takePicture(
