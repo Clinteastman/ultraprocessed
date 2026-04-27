@@ -6,12 +6,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.api.v1 import router as v1_router
 from app.config import get_settings
+from app.db import init_schema
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Database init lands in the next task.
+    # Dev-friendly fallback for fresh installs - alembic remains the
+    # canonical path for production migrations.
+    init_schema()
     yield
 
 
@@ -34,6 +38,8 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "version": app.version}
+
+    app.include_router(v1_router)
 
     _mount_dashboard(app, settings.dashboard_dir)
     return app
