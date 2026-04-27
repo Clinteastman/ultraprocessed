@@ -24,8 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -41,11 +40,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ultraprocessed.UltraprocessedApplication
 import com.ultraprocessed.sync.SyncResult
@@ -56,17 +55,13 @@ import com.ultraprocessed.ui.PendingResult
 import com.ultraprocessed.ui.components.Overline
 import com.ultraprocessed.ui.components.SyncIconState
 import com.ultraprocessed.ui.components.SyncStatusIcon
-import com.ultraprocessed.ui.components.TodayChip
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.combine
-import java.util.Calendar
 
 @Composable
 fun ScanScreen(
     mainVm: MainViewModel,
     onResult: () -> Unit,
-    onOpenHistory: () -> Unit,
-    onOpenSettings: () -> Unit
+    onBack: () -> Unit
 ) {
     val scanVm: ScanViewModel = viewModel(factory = ScanViewModel.Factory)
     val state by scanVm.scanState.collectAsState()
@@ -106,7 +101,6 @@ fun ScanScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Semantic.colors.bg)) {
-
         if (hasCameraPermission) {
             CameraSurface(scanVm)
         } else {
@@ -116,13 +110,6 @@ fun ScanScreen(
         val container = remember(context) {
             (context.applicationContext as UltraprocessedApplication).container
         }
-        val (startMs, endMs) = remember { todayBoundsMs() }
-        val todayItems by container.consumptionRepository
-            .observeRange(startMs, endMs)
-            .collectAsState(initial = emptyList())
-        val kcalToday = todayItems.sumOf { it.log.kcalConsumedSnapshot ?: 0.0 }
-        val mealsToday = todayItems.size
-
         val pendingFoods by container.foodRepository
             .observePendingCount()
             .collectAsState(initial = 0)
@@ -138,10 +125,7 @@ fun ScanScreen(
         }
 
         TopChrome(
-            onOpenSettings = onOpenSettings,
-            onOpenHistory = onOpenHistory,
-            kcalToday = kcalToday,
-            mealsToday = mealsToday,
+            onBack = onBack,
             syncState = syncState,
             onTapSync = { container.syncCoordinator.trigger() }
         )
@@ -226,14 +210,11 @@ private fun PermissionPrompt(onRequest: () -> Unit) {
 
 @Composable
 private fun BoxScope.TopChrome(
-    onOpenSettings: () -> Unit,
-    onOpenHistory: () -> Unit,
-    kcalToday: Double,
-    mealsToday: Int,
+    onBack: () -> Unit,
     syncState: SyncIconState,
     onTapSync: () -> Unit
 ) {
-    androidx.compose.foundation.layout.Column(
+    Row(
         modifier = Modifier
             .align(Alignment.TopStart)
             .fillMaxWidth()
@@ -241,26 +222,25 @@ private fun BoxScope.TopChrome(
                 start = Tokens.Space.s5,
                 end = Tokens.Space.s5,
                 top = Tokens.Space.s7
-            )
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.45f))
+                .clickable(onClick = onBack),
+            contentAlignment = Alignment.Center
         ) {
-            Overline(text = "Ultraprocessed", color = Color.White.copy(alpha = 0.85f))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SyncStatusIcon(state = syncState, onClick = onTapSync)
-                Spacer(Modifier.size(Tokens.Space.s2))
-                CircleIconButton(icon = Icons.Default.History, onClick = onOpenHistory)
-                Spacer(Modifier.size(Tokens.Space.s2))
-                CircleIconButton(icon = Icons.Default.Settings, onClick = onOpenSettings)
-            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Back",
+                tint = Color.White
+            )
         }
-        if (mealsToday > 0) {
-            Spacer(Modifier.size(Tokens.Space.s2))
-            TodayChip(kcalToday = kcalToday, mealsToday = mealsToday)
-        }
+        SyncStatusIcon(state = syncState, onClick = onTapSync)
     }
 }
 
@@ -272,40 +252,6 @@ private fun deriveSyncIconState(pendingCount: Int, lastResult: SyncResult): Sync
         pendingCount > 0 -> SyncIconState.Pending
         else -> SyncIconState.Done
     }
-
-private fun todayBoundsMs(): Pair<Long, Long> {
-    val cal = Calendar.getInstance().apply {
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }
-    val start = cal.timeInMillis
-    cal.add(Calendar.DAY_OF_YEAR, 1)
-    val end = cal.timeInMillis - 1
-    return start to end
-}
-
-@Composable
-private fun CircleIconButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.45f))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = Color.White
-        )
-    }
-}
 
 @Composable
 private fun BoxScope.BottomChrome(

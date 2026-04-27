@@ -10,7 +10,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.ultraprocessed.theme.Semantic
-import com.ultraprocessed.ui.history.HistoryScreen
+import com.ultraprocessed.ui.home.HomeScreen
 import com.ultraprocessed.ui.pairing.PairingScanScreen
 import com.ultraprocessed.ui.result.ResultScreen
 import com.ultraprocessed.ui.scan.ScanScreen
@@ -18,8 +18,8 @@ import com.ultraprocessed.ui.settings.SettingsScreen
 
 /**
  * Top-level Compose host. Owns the NavController and the
- * activity-scoped [MainViewModel]; all four screens read shared state
- * from it (notably the pending scan result).
+ * activity-scoped [MainViewModel]; the home screen is the default
+ * destination, with Scan reachable as a push from the FAB.
  */
 @Composable
 fun UltraprocessedApp() {
@@ -33,14 +33,19 @@ fun UltraprocessedApp() {
     ) {
         NavHost(
             navController = navController,
-            startDestination = Routes.Scan
+            startDestination = Routes.Home
         ) {
+            composable(Routes.Home) {
+                HomeScreen(
+                    onScanTap = { navController.navigate(Routes.Scan) },
+                    onOpenSettings = { navController.navigate(Routes.Settings) }
+                )
+            }
             composable(Routes.Scan) {
                 ScanScreen(
                     mainVm = mainVm,
                     onResult = { navController.navigate(Routes.Result) },
-                    onOpenHistory = { navController.navigate(Routes.History) },
-                    onOpenSettings = { navController.navigate(Routes.Settings) }
+                    onBack = { navController.popBackStack() }
                 )
             }
             composable(Routes.Result) {
@@ -48,13 +53,10 @@ fun UltraprocessedApp() {
                     mainVm = mainVm,
                     onDone = {
                         mainVm.clearPending()
-                        navController.popBackStack()
+                        // Pop result + scan, returning to Home so the user
+                        // sees their updated totals.
+                        navController.popBackStack(Routes.Home, inclusive = false)
                     }
-                )
-            }
-            composable(Routes.History) {
-                HistoryScreen(
-                    onBack = { navController.popBackStack() }
                 )
             }
             composable(Routes.Settings) {
