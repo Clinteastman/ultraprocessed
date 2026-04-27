@@ -25,7 +25,13 @@ internal object Prompt {
           "kcalPerUnit": number or null,
           "servingDescription": string or null,
           "ingredients": array of strings (most processed/notable items first; can be empty),
-          "confidence": number between 0 and 1
+          "confidence": number between 0 and 1,
+          "alternatives": array of objects, each {
+            "name": string,
+            "novaClass": integer 1-4,
+            "kcalPer100g": number or null,
+            "kcalPerUnit": number or null
+          }
         }
 
         NOVA reference:
@@ -56,6 +62,12 @@ internal object Prompt {
             no recognizable shape).
           - For unbranded items, leave brand null. Provide a typical kcalPer100g and
             kcalPerUnit when you can (e.g., a medium apple ≈ 95 kcal).
+          - For images where multiple foods could plausibly match (a round red fruit
+            could be apple, peach, plum), include up to 3 alternatives in the
+            `alternatives` array, each with its own NOVA class and kcal estimate.
+            The user can pick the right one if your primary guess is wrong. Skip
+            alternatives only when you're highly confident (clear barcoded packaging,
+            unambiguous label text, or distinctive whole foods like a banana).
     """.trimIndent()
 
     /**

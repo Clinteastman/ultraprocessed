@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
@@ -21,9 +24,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -34,10 +39,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ultraprocessed.analyzer.FoodAlternative
+import com.ultraprocessed.analyzer.FoodAnalysis
 import com.ultraprocessed.theme.Semantic
 import com.ultraprocessed.theme.Tokens
 import com.ultraprocessed.theme.novaColor
 import com.ultraprocessed.ui.MainViewModel
+import com.ultraprocessed.ui.PendingResult
 import com.ultraprocessed.ui.components.NovaDigit
 import com.ultraprocessed.ui.components.NovaScale
 import com.ultraprocessed.ui.components.Overline
@@ -60,7 +68,22 @@ fun ResultScreen(
     }
 
     var percentage by remember { mutableStateOf(100f) }
-    val analysis = current.analysis
+    // Selected index: -1 = primary, 0..n-1 = alternative index.
+    var selectedAltIndex by remember { mutableIntStateOf(-1) }
+    val analysis: FoodAnalysis = current.analysis.let { primary ->
+        if (selectedAltIndex < 0 || selectedAltIndex >= primary.alternatives.size) {
+            primary
+        } else {
+            val alt = primary.alternatives[selectedAltIndex]
+            primary.copy(
+                name = alt.name,
+                novaClass = alt.novaClass,
+                novaRationale = "You picked ${alt.name} as the actual food.",
+                kcalPer100g = alt.kcalPer100g ?: primary.kcalPer100g,
+                kcalPerUnit = alt.kcalPerUnit ?: primary.kcalPerUnit
+            )
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -112,6 +135,16 @@ fun ResultScreen(
             style = MaterialTheme.typography.bodyLarge
         )
 
+        if (current.analysis.alternatives.isNotEmpty()) {
+            Spacer(Modifier.height(Tokens.Space.s5))
+            AlternativesPicker(
+                primaryName = current.analysis.name,
+                alternatives = current.analysis.alternatives,
+                selectedIndex = selectedAltIndex,
+                onSelect = { idx -> selectedAltIndex = idx }
+            )
+        }
+
         if (analysis.ingredients.isNotEmpty()) {
             Spacer(Modifier.height(Tokens.Space.s5))
             Overline(text = "Notable ingredients")
@@ -162,7 +195,8 @@ fun ResultScreen(
         PrimaryButton(
             label = "I ate it",
             onClick = {
-                resultVm.logConsumption(current, percentage.roundToInt()) { onDone() }
+                val toLog = current.copy(analysis = analysis)
+                resultVm.logConsumption(toLog, percentage.roundToInt()) { onDone() }
             }
         )
         Spacer(Modifier.height(Tokens.Space.s3))
@@ -239,4 +273,61 @@ private fun novaLabel(novaClass: Int): String = when (novaClass) {
     3 -> "Processed"
     4 -> "Ultra-processed"
     else -> "Unknown"
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AlternativesPicker(
+    primaryName: String,
+    alternatives: List<FoodAlternative>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit
+) {
+    Column {
+        Overline(text = "Not right? Pick another.")
+        Spacer(Modifier.height(Tokens.Space.s2))
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Tokens.Space.s2),
+            verticalArrangement = Arrangement.spacedBy(Tokens.Space.s2)
+        ) {
+            FoodChip(
+                label = primaryName,
+                selected = selectedIndex < 0,
+                onClick = { onSelect(-1) }
+            )
+            alternatives.forEachIndexed { idx, alt ->
+                FoodChip(
+                    label = alt.name,
+                    selected = selectedIndex == idx,
+                    onClick = { onSelect(idx) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FoodChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(Tokens.Radius.lg))
+            .background(
+                if (selected) Semantic.colors.accent
+                else Semantic.colors.surface2
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = Tokens.Space.s4, vertical = Tokens.Space.s2)
+    ) {
+        Text(
+            text = label,
+            color = if (selected) Semantic.colors.inkInverse else Semantic.colors.inkHigh,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium
+        )
+    }
 }

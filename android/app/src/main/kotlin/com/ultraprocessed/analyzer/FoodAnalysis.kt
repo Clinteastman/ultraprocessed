@@ -37,5 +37,20 @@ data class FoodAnalysis(
     val ingredients: List<String> = emptyList(),
 
     /** 0.0..1.0 model confidence in the classification. */
-    val confidence: Double = 1.0
+    val confidence: Double = 1.0,
+
+    /**
+     * Up to ~3 plausible alternative identifications. The result UI shows
+     * these as selectable chips so the user can override when the model's
+     * primary guess is wrong (e.g. it called a mango an apple).
+     */
+    val alternatives: List<FoodAlternative> = emptyList()
+)
+
+@Serializable
+data class FoodAlternative(
+    val name: String,
+    val novaClass: Int,
+    val kcalPer100g: Double? = null,
+    val kcalPerUnit: Double? = null
 )
