@@ -1,0 +1,37 @@
+name: ultraprocessed
+
+# Production compose: pulls a pre-built image from GHCR and runs it.
+# Drop this file + .env on your Docker host (e.g. K12) and run:
+#
+#   docker compose -f compose.prod.yml pull
+#   docker compose -f compose.prod.yml up -d
+#
+# To update later:
+#
+#   docker compose -f compose.prod.yml pull
+#   docker compose -f compose.prod.yml up -d  # picks up the new image
+
+services:
+  backend:
+    image: ${ULTRAPROCESSED_IMAGE:-ghcr.io/clinteastman/ultraprocessed-backend:latest}
+    container_name: ultraprocessed-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ULTRAPROCESSED_DATABASE_URL: ${ULTRAPROCESSED_DATABASE_URL:-sqlite:////app/data/ultraprocessed.db}
+      ULTRAPROCESSED_TOKEN_SECRET: ${ULTRAPROCESSED_TOKEN_SECRET:?Set ULTRAPROCESSED_TOKEN_SECRET in .env}
+    ports:
+      - "${ULTRAPROCESSED_PORT:-8000}:8000"
+    volumes:
+      - backend-data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  backend-data:
+    name: ultraprocessed-backend-data
