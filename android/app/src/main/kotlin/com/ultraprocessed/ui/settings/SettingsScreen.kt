@@ -41,7 +41,10 @@ import com.ultraprocessed.theme.Tokens
 import com.ultraprocessed.ui.components.Overline
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onScanPairingQr: () -> Unit = {}
+) {
     val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)
     val state by vm.state.collectAsState()
 
@@ -94,6 +97,17 @@ fun SettingsScreen(onBack: () -> Unit) {
 
         Spacer(Modifier.height(Tokens.Space.s7))
         SectionHeader("Backend (optional)")
+        Text(
+            text = "Easiest: open your dashboard's Settings page on a laptop, tap " +
+                "\"Pair a device\", then scan the QR with the button below.",
+            color = Semantic.colors.inkMid,
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Spacer(Modifier.height(Tokens.Space.s3))
+        ScanPairingQrButton(onClick = onScanPairingQr)
+        Spacer(Modifier.height(Tokens.Space.s5))
+        Overline(text = "Or set manually")
+        Spacer(Modifier.height(Tokens.Space.s2))
         Field(label = "Backend URL", value = state.backendUrl, onValueChange = vm::updateBackendUrl)
         Spacer(Modifier.height(Tokens.Space.s3))
         Field(
@@ -217,6 +231,25 @@ private fun Field(
                 style = MaterialTheme.typography.bodySmall
             )
         }
+    }
+}
+
+@Composable
+private fun ScanPairingQrButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clip(RoundedCornerShape(Tokens.Radius.lg))
+            .background(Semantic.colors.accent)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "Scan pairing QR",
+            color = Semantic.colors.inkInverse,
+            style = MaterialTheme.typography.titleMedium
+        )
     }
 }
 

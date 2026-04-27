@@ -1,29 +1,47 @@
 <script lang="ts">
+  import QRCode from "qrcode";
   import { api } from "$lib/api/client";
 
-  let phoneToken = $state<string | null>(null);
-  let issuingPhoneToken = $state(false);
-  let phoneTokenError = $state<string | null>(null);
+  let qrSvg = $state<string | null>(null);
+  let pairing = $state(false);
+  let pairError = $state<string | null>(null);
   let copied = $state(false);
+  let payload = $state<string | null>(null);
 
-  async function issuePhoneToken() {
-    issuingPhoneToken = true;
-    phoneTokenError = null;
+  async function pairDevice() {
+    pairing = true;
+    pairError = null;
     copied = false;
+    qrSvg = null;
+    payload = null;
     try {
       const result = await api.pair("phone");
-      phoneToken = result.token;
+      const blob = JSON.stringify({
+        v: 1,
+        url: window.location.origin,
+        token: result.token,
+        device_id: result.device_id,
+        user_id: result.user_id
+      });
+      payload = blob;
+      qrSvg = await QRCode.toString(blob, {
+        type: "svg",
+        margin: 2,
+        width: 320,
+        errorCorrectionLevel: "M",
+        color: { dark: "#0B0B0C", light: "#F5F4EF" }
+      });
     } catch (e) {
-      phoneTokenError = (e as Error).message;
+      pairError = (e as Error).message;
     } finally {
-      issuingPhoneToken = false;
+      pairing = false;
     }
   }
 
-  async function copyPhoneToken() {
-    if (!phoneToken) return;
+  async function copyPayload() {
+    if (!payload) return;
     try {
-      await navigator.clipboard.writeText(phoneToken);
+      await navigator.clipboard.writeText(payload);
       copied = true;
       setTimeout(() => (copied = false), 2000);
     } catch {
@@ -42,35 +60,47 @@
     </p>
   </div>
 
-  <section class="rounded-lg bg-surface-1 p-6 space-y-4">
+  <section class="rounded-lg bg-surface-1 p-6 space-y-5">
     <div>
-      <p class="text-xs uppercase tracking-wider text-ink-mid">Pair a phone</p>
+      <p class="text-xs uppercase tracking-wider text-ink-mid">Pair a device</p>
       <p class="text-sm text-ink-mid mt-1">
-        In the Android app, open Settings, set <span class="text-ink-hi">Backend URL</span> to wherever this dashboard is hosted, then either tap <span class="text-ink-hi">Pair</span> in the app, or generate a token here and paste it as the <span class="text-ink-hi">Device token</span>.
+        Tap the button, point your phone at the QR code, and the app sets the backend URL and token in one go. No typing.
       </p>
     </div>
     <button
       type="button"
-      onclick={issuePhoneToken}
-      disabled={issuingPhoneToken}
+      onclick={pairDevice}
+      disabled={pairing}
       class="rounded-md bg-accent text-ink-inv font-semibold px-4 py-2 hover:bg-accent-press transition-colors disabled:opacity-50"
     >
-      {issuingPhoneToken ? "Generating..." : "Generate phone token"}
+      {pairing ? "Generating..." : qrSvg ? "Generate another" : "Pair a device"}
     </button>
-    {#if phoneTokenError}
-      <p class="text-sm text-nova-4">{phoneTokenError}</p>
+    {#if pairError}
+      <p class="text-sm text-nova-4">{pairError}</p>
     {/if}
-    {#if phoneToken}
-      <div class="rounded-md bg-surface-2 p-4 space-y-3">
-        <p class="text-xs uppercase tracking-wider text-ink-mid">Phone token (one-time view)</p>
-        <code class="block break-all font-mono text-sm text-ink-hi">{phoneToken}</code>
-        <button
-          type="button"
-          onclick={copyPhoneToken}
-          class="text-sm rounded-md bg-surface-3 text-ink-hi px-3 py-1 hover:bg-surface-3/70 transition-colors"
-        >
-          {copied ? "Copied" : "Copy"}
-        </button>
+    {#if qrSvg}
+      <div class="space-y-3">
+        <div class="rounded-md p-4 bg-ink-hi inline-block">
+          {@html qrSvg}
+        </div>
+        <p class="text-xs text-ink-mid">
+          In the phone app open Settings &rarr; Scan pairing QR.
+        </p>
+        <details class="text-sm text-ink-mid">
+          <summary class="cursor-pointer text-ink-mid hover:text-ink-hi">
+            Show payload (manual copy)
+          </summary>
+          <div class="mt-2 rounded-md bg-surface-2 p-4 space-y-2">
+            <code class="block break-all font-mono text-xs text-ink-hi">{payload}</code>
+            <button
+              type="button"
+              onclick={copyPayload}
+              class="text-xs rounded-md bg-surface-3 text-ink-hi px-3 py-1 hover:bg-surface-3/70 transition-colors"
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+        </details>
       </div>
     {/if}
   </section>

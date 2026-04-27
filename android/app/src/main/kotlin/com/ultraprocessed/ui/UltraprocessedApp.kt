@@ -11,6 +11,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.ultraprocessed.theme.Semantic
 import com.ultraprocessed.ui.history.HistoryScreen
+import com.ultraprocessed.ui.pairing.PairingScanScreen
 import com.ultraprocessed.ui.result.ResultScreen
 import com.ultraprocessed.ui.scan.ScanScreen
 import com.ultraprocessed.ui.settings.SettingsScreen
@@ -58,7 +59,14 @@ fun UltraprocessedApp() {
             }
             composable(Routes.Settings) {
                 SettingsScreen(
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onScanPairingQr = { navController.navigate(Routes.PairingScan) }
+                )
+            }
+            composable(Routes.PairingScan) {
+                PairingScanScreen(
+                    onBack = { navController.popBackStack() },
+                    onDone = { navController.popBackStack() }
                 )
             }
         }

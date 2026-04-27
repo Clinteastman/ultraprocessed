@@ -5,4 +5,5 @@ object Routes {
     const val Result = "result"
     const val History = "history"
     const val Settings = "settings"
+    const val PairingScan = "pairing-scan"
 }

@@ -54,6 +54,9 @@ class ScanPipeline(private val context: Context) {
     /** Live barcode events (deduped). */
     val barcodes: SharedFlow<String> = barcodeAnalyzer.barcodes
 
+    /** Live QR-code text events (deduped). Used by the pairing-scan screen. */
+    val qrCodes: SharedFlow<String> = barcodeAnalyzer.qrCodes
+
     /**
      * Wires the camera preview to a Compose [Preview.SurfaceProvider].
      */

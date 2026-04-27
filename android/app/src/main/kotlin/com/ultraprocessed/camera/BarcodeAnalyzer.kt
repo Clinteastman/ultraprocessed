@@ -47,9 +47,19 @@ class BarcodeAnalyzer : ImageAnalysis.Analyzer, Closeable {
         extraBufferCapacity = 4,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
+    /** Numeric product barcodes (EAN/UPC/etc.). Used by the scan pipeline. */
     val barcodes: SharedFlow<String> = _barcodes.asSharedFlow()
 
-    private var lastEmitted: String? = null
+    private val _qrCodes = MutableSharedFlow<String>(
+        replay = 0,
+        extraBufferCapacity = 4,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    /** QR code text payloads. Used by the pairing-scan screen. */
+    val qrCodes: SharedFlow<String> = _qrCodes.asSharedFlow()
+
+    private var lastBarcode: String? = null
+    private var lastQr: String? = null
 
     override fun analyze(image: ImageProxy) {
         val mediaImage = image.image
@@ -60,15 +70,20 @@ class BarcodeAnalyzer : ImageAnalysis.Analyzer, Closeable {
         val input = InputImage.fromMediaImage(mediaImage, image.imageInfo.rotationDegrees)
         scanner.process(input)
             .addOnSuccessListener { results ->
-                results
-                    .mapNotNull { it.rawValue }
-                    .firstOrNull { it.length in MIN_LENGTH..MAX_LENGTH && it.matches(DIGITS) }
-                    ?.let { code ->
-                        if (code != lastEmitted) {
-                            lastEmitted = code
-                            _barcodes.tryEmit(code)
+                for (barcode in results) {
+                    val raw = barcode.rawValue ?: continue
+                    if (barcode.format == Barcode.FORMAT_QR_CODE) {
+                        if (raw != lastQr) {
+                            lastQr = raw
+                            _qrCodes.tryEmit(raw)
+                        }
+                    } else if (raw.length in MIN_LENGTH..MAX_LENGTH && raw.matches(DIGITS)) {
+                        if (raw != lastBarcode) {
+                            lastBarcode = raw
+                            _barcodes.tryEmit(raw)
                         }
                     }
+                }
             }
             .addOnCompleteListener { image.close() }
     }
