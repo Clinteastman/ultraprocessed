@@ -11,6 +11,8 @@ import com.ultraprocessed.data.settings.ProviderType
 import com.ultraprocessed.data.settings.SecretStore
 import com.ultraprocessed.data.settings.Settings
 import com.ultraprocessed.sync.BackendClient
+import com.ultraprocessed.sync.SyncCoordinator
+import com.ultraprocessed.sync.SyncResult
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,7 +29,8 @@ import kotlinx.coroutines.launch
 class SettingsViewModel(
     private val settings: Settings,
     private val secrets: SecretStore,
-    private val httpClient: HttpClient
+    private val httpClient: HttpClient,
+    private val syncCoordinator: SyncCoordinator
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsState())
@@ -101,6 +104,15 @@ class SettingsViewModel(
         }
     }
 
+    /** Manually trigger a sync; surfaces the result on screen. */
+    fun syncNow() {
+        _state.value = _state.value.copy(syncStatus = SyncStatus.InFlight)
+        viewModelScope.launch {
+            val result = syncCoordinator.syncOnce()
+            _state.value = _state.value.copy(syncStatus = SyncStatus.fromResult(result))
+        }
+    }
+
     /** Throws away unsaved edits; reverts the draft to the saved values. */
     fun discard() {
         _state.value = _state.value.copy(
@@ -149,7 +161,12 @@ class SettingsViewModel(
             initializer {
                 val app = (this[APPLICATION_KEY] as UltraprocessedApplication)
                 val container = app.container
-                SettingsViewModel(container.settings, container.secrets, container.httpClient)
+                SettingsViewModel(
+                    settings = container.settings,
+                    secrets = container.secrets,
+                    httpClient = container.httpClient,
+                    syncCoordinator = container.syncCoordinator
+                )
             }
         }
     }
@@ -169,7 +186,8 @@ data class SettingsState(
     val saved: SettingsValues = SettingsValues(),
     val draft: SettingsValues = SettingsValues(),
     val saveStatus: SaveStatus = SaveStatus.Idle,
-    val pairStatus: PairStatus = PairStatus.Idle
+    val pairStatus: PairStatus = PairStatus.Idle,
+    val syncStatus: SyncStatus = SyncStatus.Idle
 ) {
     val dirty: Boolean get() = saved != draft
 }
@@ -185,4 +203,23 @@ sealed class PairStatus {
     data object InFlight : PairStatus()
     data class Success(val message: String) : PairStatus()
     data class Failed(val message: String) : PairStatus()
+}
+
+sealed class SyncStatus {
+    data object Idle : SyncStatus()
+    data object InFlight : SyncStatus()
+    data class Reported(val message: String, val isError: Boolean) : SyncStatus()
+
+    companion object {
+        fun fromResult(result: SyncResult): SyncStatus = when (result) {
+            SyncResult.NotConfigured -> Reported("Backend URL or token not set.", true)
+            SyncResult.BackendUnreachable -> Reported("Backend unreachable. Check the URL.", true)
+            SyncResult.UpToDate -> Reported("Already up to date.", false)
+            is SyncResult.Pushed -> Reported(
+                "Pushed ${result.foodCount} foods, ${result.logCount} logs.",
+                false
+            )
+            is SyncResult.Failed -> Reported("Sync failed: ${result.message}", true)
+        }
+    }
 }

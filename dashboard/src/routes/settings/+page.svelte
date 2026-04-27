@@ -7,6 +7,7 @@
   let pairError = $state<string | null>(null);
   let copied = $state(false);
   let payload = $state<string | null>(null);
+  let originWarning = $state<string | null>(null);
 
   async function pairDevice() {
     pairing = true;
@@ -14,11 +15,21 @@
     copied = false;
     qrSvg = null;
     payload = null;
+    originWarning = null;
     try {
+      const origin = window.location.origin;
+      const host = window.location.hostname;
+      if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0") {
+        originWarning =
+          `Heads-up: this dashboard is loaded via ${origin}. The QR will tell ` +
+          "your phone to use that URL, which the phone can't reach (localhost on the phone is the phone, not this machine). " +
+          "Access this dashboard via your LAN IP or public hostname before generating a QR for a phone.";
+      }
+
       const result = await api.pair("phone");
       const blob = JSON.stringify({
         v: 1,
-        url: window.location.origin,
+        url: origin,
         token: result.token,
         device_id: result.device_id,
         user_id: result.user_id
@@ -77,6 +88,11 @@
     </button>
     {#if pairError}
       <p class="text-sm text-nova-4">{pairError}</p>
+    {/if}
+    {#if originWarning}
+      <div class="rounded-md bg-nova-3/15 border border-nova-3/30 p-3">
+        <p class="text-sm text-ink-hi">{originWarning}</p>
+      </div>
     {/if}
     {#if qrSvg}
       <div class="space-y-3">

@@ -22,5 +22,7 @@ class ConsumptionRepository(private val dao: ConsumptionLogDao) {
 
     suspend fun pending(): List<ConsumptionLog> = dao.pending()
 
+    fun observePendingCount(): Flow<Int> = dao.observePendingCount()
+
     suspend fun delete(uuid: String) = dao.deleteByClientUuid(uuid)
 }

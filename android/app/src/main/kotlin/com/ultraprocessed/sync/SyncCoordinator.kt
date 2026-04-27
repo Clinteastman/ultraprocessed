@@ -1,5 +1,6 @@
 package com.ultraprocessed.sync
 
+import android.util.Log
 import com.ultraprocessed.data.AppDatabase
 import com.ultraprocessed.data.entities.ConsumptionLog
 import com.ultraprocessed.data.entities.FoodEntry
@@ -11,6 +12,9 @@ import com.ultraprocessed.data.settings.Settings
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -18,6 +22,8 @@ import kotlinx.coroutines.sync.withLock
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+
+private const val TAG = "Ultraprocessed.Sync"
 
 /**
  * Push-only sync coordinator. Pending FoodEntry + ConsumptionLog rows
@@ -41,22 +47,41 @@ class SyncCoordinator(
 ) {
     private val mutex = Mutex()
 
+    private val _lastResult = MutableStateFlow<SyncResult>(SyncResult.NotConfigured)
+    val lastResult: StateFlow<SyncResult> = _lastResult.asStateFlow()
+
     fun trigger() {
         scope.launch(Dispatchers.IO) {
             runCatching { syncOnce() }
+                .onFailure { Log.e(TAG, "syncOnce threw", it) }
         }
     }
 
     suspend fun syncOnce(): SyncResult = mutex.withLock {
+        val result = runSync()
+        _lastResult.value = result
+        Log.i(TAG, "sync result: $result")
+        result
+    }
+
+    private suspend fun runSync(): SyncResult {
         val baseUrl = settings.backendBaseUrl.first().orEmpty()
         val token = secrets.backendToken.orEmpty()
-        if (baseUrl.isBlank() || token.isBlank()) return SyncResult.NotConfigured
+        if (baseUrl.isBlank() || token.isBlank()) {
+            Log.i(TAG, "skipping sync: backend not configured (url='$baseUrl', tokenSet=${token.isNotBlank()})")
+            return SyncResult.NotConfigured
+        }
 
+        Log.i(TAG, "syncing to $baseUrl")
         val client = BackendClient(baseUrl = baseUrl, token = token, client = httpClient)
-        if (!client.health()) return SyncResult.BackendUnreachable
+        if (!client.health()) {
+            Log.w(TAG, "backend health check failed at $baseUrl")
+            return SyncResult.BackendUnreachable
+        }
 
         val pendingFoods = foodRepository.pending()
         val pendingLogs = consumptionRepository.pending()
+        Log.i(TAG, "pending: ${pendingFoods.size} foods, ${pendingLogs.size} logs")
 
         if (pendingFoods.isEmpty() && pendingLogs.isEmpty()) {
             return SyncResult.UpToDate
@@ -64,13 +89,17 @@ class SyncCoordinator(
 
         val foodsResult = client.pushFoods(pendingFoods.map { it.toDto() })
         if (foodsResult.isFailure) {
-            return SyncResult.Failed(foodsResult.exceptionOrNull()?.message ?: "food push failed")
+            val msg = foodsResult.exceptionOrNull()?.message ?: "food push failed"
+            Log.w(TAG, "food push failed: $msg")
+            return SyncResult.Failed(msg)
         }
         markFoodsSynced(pendingFoods)
 
         val logsResult = client.pushConsumption(pendingLogs.map { it.toDto() })
         if (logsResult.isFailure) {
-            return SyncResult.Failed(logsResult.exceptionOrNull()?.message ?: "consumption push failed")
+            val msg = logsResult.exceptionOrNull()?.message ?: "consumption push failed"
+            Log.w(TAG, "consumption push failed: $msg")
+            return SyncResult.Failed(msg)
         }
         markLogsSynced(pendingLogs)
 

@@ -30,6 +30,9 @@ interface FoodEntryDao {
     @Query("SELECT * FROM food_entry WHERE sync_state = :state")
     suspend fun pending(state: SyncState = SyncState.PENDING): List<FoodEntry>
 
+    @Query("SELECT COUNT(*) FROM food_entry WHERE sync_state = :state")
+    fun observePendingCount(state: SyncState = SyncState.PENDING): Flow<Int>
+
     @Query("SELECT * FROM food_entry ORDER BY updated_at DESC LIMIT :limit")
     fun observeRecent(limit: Int = 50): Flow<List<FoodEntry>>
 

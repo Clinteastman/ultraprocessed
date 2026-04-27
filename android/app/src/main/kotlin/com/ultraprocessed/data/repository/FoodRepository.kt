@@ -18,5 +18,7 @@ class FoodRepository(private val dao: FoodEntryDao) {
 
     suspend fun pending(): List<FoodEntry> = dao.pending()
 
+    fun observePendingCount(): Flow<Int> = dao.observePendingCount()
+
     suspend fun delete(uuid: String) = dao.deleteByClientUuid(uuid)
 }

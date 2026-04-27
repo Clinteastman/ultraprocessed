@@ -48,13 +48,17 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ultraprocessed.UltraprocessedApplication
+import com.ultraprocessed.sync.SyncResult
 import com.ultraprocessed.theme.Semantic
 import com.ultraprocessed.theme.Tokens
 import com.ultraprocessed.ui.MainViewModel
 import com.ultraprocessed.ui.PendingResult
 import com.ultraprocessed.ui.components.Overline
+import com.ultraprocessed.ui.components.SyncIconState
+import com.ultraprocessed.ui.components.SyncStatusIcon
 import com.ultraprocessed.ui.components.TodayChip
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import java.util.Calendar
 
 @Composable
@@ -119,11 +123,27 @@ fun ScanScreen(
         val kcalToday = todayItems.sumOf { it.log.kcalConsumedSnapshot ?: 0.0 }
         val mealsToday = todayItems.size
 
+        val pendingFoods by container.foodRepository
+            .observePendingCount()
+            .collectAsState(initial = 0)
+        val pendingLogs by container.consumptionRepository
+            .observePendingCount()
+            .collectAsState(initial = 0)
+        val lastSync by container.syncCoordinator.lastResult.collectAsState()
+        val syncState = remember(pendingFoods, pendingLogs, lastSync) {
+            deriveSyncIconState(
+                pendingCount = pendingFoods + pendingLogs,
+                lastResult = lastSync
+            )
+        }
+
         TopChrome(
             onOpenSettings = onOpenSettings,
             onOpenHistory = onOpenHistory,
             kcalToday = kcalToday,
-            mealsToday = mealsToday
+            mealsToday = mealsToday,
+            syncState = syncState,
+            onTapSync = { container.syncCoordinator.trigger() }
         )
 
         BottomChrome(
@@ -209,7 +229,9 @@ private fun BoxScope.TopChrome(
     onOpenSettings: () -> Unit,
     onOpenHistory: () -> Unit,
     kcalToday: Double,
-    mealsToday: Int
+    mealsToday: Int,
+    syncState: SyncIconState,
+    onTapSync: () -> Unit
 ) {
     androidx.compose.foundation.layout.Column(
         modifier = Modifier
@@ -228,6 +250,8 @@ private fun BoxScope.TopChrome(
         ) {
             Overline(text = "Ultraprocessed", color = Color.White.copy(alpha = 0.85f))
             Row(verticalAlignment = Alignment.CenterVertically) {
+                SyncStatusIcon(state = syncState, onClick = onTapSync)
+                Spacer(Modifier.size(Tokens.Space.s2))
                 CircleIconButton(icon = Icons.Default.History, onClick = onOpenHistory)
                 Spacer(Modifier.size(Tokens.Space.s2))
                 CircleIconButton(icon = Icons.Default.Settings, onClick = onOpenSettings)
@@ -239,6 +263,15 @@ private fun BoxScope.TopChrome(
         }
     }
 }
+
+private fun deriveSyncIconState(pendingCount: Int, lastResult: SyncResult): SyncIconState =
+    when {
+        lastResult is SyncResult.NotConfigured -> SyncIconState.Off
+        lastResult is SyncResult.BackendUnreachable -> SyncIconState.Off
+        lastResult is SyncResult.Failed -> SyncIconState.Off
+        pendingCount > 0 -> SyncIconState.Pending
+        else -> SyncIconState.Done
+    }
 
 private fun todayBoundsMs(): Pair<Long, Long> {
     val cal = Calendar.getInstance().apply {

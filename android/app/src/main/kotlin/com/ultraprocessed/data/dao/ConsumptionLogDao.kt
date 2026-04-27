@@ -61,6 +61,9 @@ interface ConsumptionLogDao {
     @Query("SELECT * FROM consumption_log WHERE sync_state = :state")
     suspend fun pending(state: SyncState = SyncState.PENDING): List<ConsumptionLog>
 
+    @Query("SELECT COUNT(*) FROM consumption_log WHERE sync_state = :state")
+    fun observePendingCount(state: SyncState = SyncState.PENDING): Flow<Int>
+
     @Query("SELECT MAX(eaten_at) FROM consumption_log")
     suspend fun lastEatenAt(): Long?
 

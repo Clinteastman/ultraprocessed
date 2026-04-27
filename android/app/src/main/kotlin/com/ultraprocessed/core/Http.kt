@@ -37,7 +37,9 @@ object Http {
         }
 
         install(Logging) {
-            level = LogLevel.NONE
+            // INFO logs request method, URL, status, and timing - enough to
+            // diagnose sync failures from `adb logcat -s Ktor:*`.
+            level = LogLevel.INFO
         }
     }
 }
