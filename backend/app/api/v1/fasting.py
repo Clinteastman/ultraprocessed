@@ -18,8 +18,10 @@ class FastingProfileDto(BaseModel):
     id: int | None = None
     name: str
     schedule_type: ScheduleType
-    eating_window_start_minutes: int
-    eating_window_end_minutes: int
+    eating_window_start_minutes: int = 720
+    eating_window_end_minutes: int = 1200
+    restricted_days_mask: int = 0
+    restricted_kcal_target: int | None = None
     active: bool = True
 
 
@@ -68,6 +70,8 @@ def upsert_profile(
         schedule_type=payload.schedule_type,
         eating_window_start_minutes=payload.eating_window_start_minutes,
         eating_window_end_minutes=payload.eating_window_end_minutes,
+        restricted_days_mask=payload.restricted_days_mask,
+        restricted_kcal_target=payload.restricted_kcal_target,
         active=payload.active,
     )
     session.add(row)
@@ -150,5 +154,7 @@ def _to_dto(row: FastingProfile | None) -> FastingProfileDto | None:
         schedule_type=row.schedule_type,
         eating_window_start_minutes=row.eating_window_start_minutes,
         eating_window_end_minutes=row.eating_window_end_minutes,
+        restricted_days_mask=row.restricted_days_mask or 0,
+        restricted_kcal_target=row.restricted_kcal_target,
         active=row.active,
     )

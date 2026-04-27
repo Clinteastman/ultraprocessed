@@ -94,26 +94,34 @@ export const api = {
       body: JSON.stringify(t)
     }),
   getFastingProfile: () =>
-    request<{
-      id: number | null;
-      name: string;
-      schedule_type: string;
-      eating_window_start_minutes: number;
-      eating_window_end_minutes: number;
-      active: boolean;
-    } | null>("/api/v1/fasting/profile"),
-  putFastingProfile: (p: {
-    name: string;
-    schedule_type: string;
-    eating_window_start_minutes: number;
-    eating_window_end_minutes: number;
-    active: boolean;
-  }) =>
-    request("/api/v1/fasting/profile", {
+    request<FastingProfileDto | null>("/api/v1/fasting/profile"),
+  putFastingProfile: (p: FastingProfileDto) =>
+    request<FastingProfileDto>("/api/v1/fasting/profile", {
       method: "PUT",
       body: JSON.stringify(p)
-    })
+    }),
+  getFood: (clientUuid: string) =>
+    request<FoodEntryDto>(`/api/v1/foods/by-uuid/${encodeURIComponent(clientUuid)}`)
 };
+
+export interface FastingProfileDto {
+  id?: number | null;
+  name: string;
+  schedule_type:
+    | "SIXTEEN_EIGHT"
+    | "EIGHTEEN_SIX"
+    | "TWENTY_FOUR"
+    | "OMAD"
+    | "FIVE_TWO"
+    | "FOUR_THREE"
+    | "ADF"
+    | "CUSTOM";
+  eating_window_start_minutes: number;
+  eating_window_end_minutes: number;
+  restricted_days_mask: number;
+  restricted_kcal_target?: number | null;
+  active: boolean;
+}
 
 /**
  * Idempotent first-load auth: if no token is stored, request a fresh one.

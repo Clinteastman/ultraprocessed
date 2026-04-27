@@ -25,10 +25,15 @@ class SyncState(str, Enum):
 
 
 class ScheduleType(str, Enum):
+    # Time-restricted eating (daily eating window)
     SIXTEEN_EIGHT = "SIXTEEN_EIGHT"
     EIGHTEEN_SIX = "EIGHTEEN_SIX"
-    TWENTY_FOUR = "TWENTY_FOUR"
+    TWENTY_FOUR = "TWENTY_FOUR"  # 20:4 (Warrior diet)
     OMAD = "OMAD"
+    # Multi-day calorie-restriction patterns
+    FIVE_TWO = "FIVE_TWO"      # 5 normal + 2 restricted days/week
+    FOUR_THREE = "FOUR_THREE"  # 4 normal + 3 restricted
+    ADF = "ADF"                # Alternate-day fasting
     CUSTOM = "CUSTOM"
 
 
@@ -112,8 +117,20 @@ class FastingProfile(SQLModel, table=True):
     user_id: int = Field(foreign_key="users.id", index=True)
     name: str
     schedule_type: ScheduleType
+
+    # Time-restricted-eating window (only meaningful for TRE schedules
+    # and CUSTOM; ignored for FIVE_TWO / FOUR_THREE / ADF).
     eating_window_start_minutes: int
     eating_window_end_minutes: int
+
+    # Multi-day patterns: bitmask of days that are restricted-calorie.
+    # Bit 0 = Monday, bit 6 = Sunday. 0 = not used (TRE).
+    restricted_days_mask: int = 0
+
+    # Calorie cap for a restricted day. Common defaults: 500 (women) or
+    # 600 (men) on 5:2; ~25% of TDEE for ADF. Null if not applicable.
+    restricted_kcal_target: int | None = None
+
     active: bool = False
 
 

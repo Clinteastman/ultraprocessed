@@ -269,27 +269,32 @@
                       class="flex items-center gap-3 rounded-md p-3 group"
                       style="background-color: {novaTint(novaClass)};"
                     >
-                      {#if food?.image_url}
-                        <img
-                          src={food.image_url}
-                          alt=""
-                          class="w-12 h-12 rounded-sm object-cover bg-surface-2"
-                          loading="lazy"
-                        />
-                      {:else}
-                        <div class="w-12 h-12 rounded-sm bg-surface-2 flex items-center justify-center text-ink-lo text-xs">
-                          —
+                      <a
+                        href={food ? `/foods/${food.client_uuid}` : "#"}
+                        class="flex items-center gap-3 flex-1 min-w-0 hover:opacity-90"
+                      >
+                        {#if food?.image_url}
+                          <img
+                            src={food.image_url}
+                            alt=""
+                            class="w-12 h-12 rounded-sm object-cover bg-surface-2"
+                            loading="lazy"
+                          />
+                        {:else}
+                          <div class="w-12 h-12 rounded-sm bg-surface-2 flex items-center justify-center text-ink-lo text-xs">
+                            —
+                          </div>
+                        {/if}
+                        <div class="flex-1 min-w-0">
+                          <p class="text-ink-hi font-medium truncate">
+                            {food?.name ?? "Unknown food"}
+                          </p>
+                          <p class="text-xs text-ink-mid">
+                            {timeLabel(log.eaten_at)} · {log.percentage_eaten}% ·
+                            {(log.kcal_consumed_snapshot ?? 0).toFixed(0)} kcal
+                          </p>
                         </div>
-                      {/if}
-                      <div class="flex-1 min-w-0">
-                        <p class="text-ink-hi font-medium truncate">
-                          {food?.name ?? "Unknown food"}
-                        </p>
-                        <p class="text-xs text-ink-mid">
-                          {timeLabel(log.eaten_at)} · {log.percentage_eaten}% ·
-                          {(log.kcal_consumed_snapshot ?? 0).toFixed(0)} kcal
-                        </p>
-                      </div>
+                      </a>
                       <NovaPill {novaClass} />
                       <button
                         type="button"

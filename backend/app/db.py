@@ -30,8 +30,35 @@ engine: Engine = _build_engine()
 
 def init_schema() -> None:
     """Create tables if they don't exist. Used at app startup as a fallback
-    when alembic migrations haven't been run yet (dev / fresh installs)."""
+    when alembic migrations haven't been run yet (dev / fresh installs).
+
+    Also runs idempotent ALTER TABLE statements for columns added after
+    the initial v1 schema, since SQLModel.create_all() never alters
+    existing tables.
+    """
     SQLModel.metadata.create_all(engine)
+    _ensure_evolved_columns()
+
+
+def _ensure_evolved_columns() -> None:
+    from sqlalchemy import text
+
+    additions = {
+        "fasting_profiles": [
+            ("restricted_days_mask", "INTEGER NOT NULL DEFAULT 0"),
+            ("restricted_kcal_target", "INTEGER"),
+        ],
+    }
+    if not engine.url.drivername.startswith("sqlite"):
+        # ALTER TABLE syntax differs per dialect; only run for SQLite,
+        # the production target. Postgres deployments should use alembic.
+        return
+    with engine.begin() as conn:
+        for table, cols in additions.items():
+            existing = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+            for name, definition in cols:
+                if name not in existing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {definition}"))
 
 
 def get_session() -> Generator[Session, None, None]:
