@@ -37,9 +37,18 @@ data class ConsumptionLog(
     @ColumnInfo(name = "food_client_uuid")
     val foodClientUuid: String,
 
-    /** 0..100 inclusive. */
+    /**
+     * Legacy "% of basis" - retained for back-compat with v1/v2 rows. New
+     * code should treat [gramsEaten] as the source of truth. We compute
+     * percentage_eaten = (grams_eaten / 100) * 100 for any consumer that
+     * still wants it.
+     */
     @ColumnInfo(name = "percentage_eaten")
     val percentageEaten: Int,
+
+    /** Grams eaten - the source of truth for kcal/nutrient snapshots. */
+    @ColumnInfo(name = "grams_eaten")
+    val gramsEaten: Double? = null,
 
     @ColumnInfo(name = "eaten_at")
     val eatenAt: Long,

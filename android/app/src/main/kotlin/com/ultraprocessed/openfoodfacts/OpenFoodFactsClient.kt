@@ -97,6 +97,9 @@ class OpenFoodFactsClient(
         val kcalPer100g = nutriments?.numeric("energy-kcal_100g")
             ?: nutriments?.numeric("energy-kcal")
         val servingSize = string("serving_size")
+        val packageGrams = numeric("product_quantity")
+        val servingGrams = numeric("serving_quantity")
+        val kcalPerServing = nutriments?.numeric("energy-kcal_serving")
         val ingredients = string("ingredients_text_en")
             ?: string("ingredients_text")
             ?: ""
@@ -107,7 +110,9 @@ class OpenFoodFactsClient(
             novaClass = novaClass.coerceAtLeast(1),
             novaRationale = novaRationale,
             kcalPer100g = kcalPer100g,
-            kcalPerUnit = null,
+            kcalPerUnit = kcalPerServing,
+            gramsPerUnit = servingGrams,
+            packageGrams = packageGrams,
             servingDescription = servingSize,
             ingredients = ingredients
                 .split(',')

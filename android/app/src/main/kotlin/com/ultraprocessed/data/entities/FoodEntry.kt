@@ -41,6 +41,12 @@ data class FoodEntry(
     @ColumnInfo(name = "kcal_per_unit")
     val kcalPerUnit: Double? = null,
 
+    @ColumnInfo(name = "grams_per_unit")
+    val gramsPerUnit: Double? = null,
+
+    @ColumnInfo(name = "package_grams")
+    val packageGrams: Double? = null,
+
     @ColumnInfo(name = "serving_description")
     val servingDescription: String? = null,
 

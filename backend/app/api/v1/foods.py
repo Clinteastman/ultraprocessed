@@ -25,6 +25,8 @@ class FoodEntryDto(BaseModel):
     nova_rationale: str
     kcal_per_100g: float | None = None
     kcal_per_unit: float | None = None
+    grams_per_unit: float | None = None
+    package_grams: float | None = None
     serving_description: str | None = None
     image_url: str | None = None
     ingredients_json: str = "[]"
@@ -45,6 +47,8 @@ class FoodEntryDto(BaseModel):
             nova_rationale=self.nova_rationale,
             kcal_per_100g=self.kcal_per_100g,
             kcal_per_unit=self.kcal_per_unit,
+            grams_per_unit=self.grams_per_unit,
+            package_grams=self.package_grams,
             serving_description=self.serving_description,
             image_url=self.image_url,
             ingredients_json=self.ingredients_json,
@@ -86,6 +90,8 @@ def upsert_foods(
                 existing.nova_rationale = dto.nova_rationale
                 existing.kcal_per_100g = dto.kcal_per_100g
                 existing.kcal_per_unit = dto.kcal_per_unit
+                existing.grams_per_unit = dto.grams_per_unit
+                existing.package_grams = dto.package_grams
                 existing.serving_description = dto.serving_description
                 existing.image_url = dto.image_url
                 existing.ingredients_json = dto.ingredients_json
@@ -158,6 +164,8 @@ def _to_dto(row: FoodEntry) -> FoodEntryDto:
         nova_rationale=row.nova_rationale,
         kcal_per_100g=row.kcal_per_100g,
         kcal_per_unit=row.kcal_per_unit,
+        grams_per_unit=row.grams_per_unit,
+        package_grams=row.package_grams,
         serving_description=row.serving_description,
         image_url=row.image_url,
         ingredients_json=row.ingredients_json,

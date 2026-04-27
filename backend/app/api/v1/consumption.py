@@ -18,6 +18,7 @@ class ConsumptionLogDto(BaseModel):
     client_uuid: str
     food_client_uuid: str
     percentage_eaten: int
+    grams_eaten: float | None = None
     eaten_at: datetime
     lat: float | None = None
     lng: float | None = None
@@ -32,6 +33,7 @@ class ConsumptionLogDto(BaseModel):
             client_uuid=self.client_uuid,
             food_client_uuid=self.food_client_uuid,
             percentage_eaten=self.percentage_eaten,
+            grams_eaten=self.grams_eaten,
             eaten_at=self.eaten_at,
             lat=self.lat,
             lng=self.lng,
@@ -62,6 +64,7 @@ def upsert_consumption(
                 raise HTTPException(status_code=403, detail="log owned by another user")
             existing.food_client_uuid = dto.food_client_uuid
             existing.percentage_eaten = dto.percentage_eaten
+            existing.grams_eaten = dto.grams_eaten
             existing.eaten_at = dto.eaten_at
             existing.lat = dto.lat
             existing.lng = dto.lng
@@ -115,6 +118,7 @@ def _to_dto(row: ConsumptionLog) -> ConsumptionLogDto:
         client_uuid=row.client_uuid,
         food_client_uuid=row.food_client_uuid,
         percentage_eaten=row.percentage_eaten,
+        grams_eaten=row.grams_eaten,
         eaten_at=row.eaten_at,
         lat=row.lat,
         lng=row.lng,

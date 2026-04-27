@@ -50,7 +50,7 @@ class ResultViewModel(
 
     fun logConsumption(
         pending: PendingResult,
-        percentageEaten: Int,
+        gramsEaten: Double,
         onComplete: () -> Unit
     ) {
         viewModelScope.launch {
@@ -72,6 +72,8 @@ class ResultViewModel(
                 novaRationale = pending.analysis.novaRationale,
                 kcalPer100g = pending.analysis.kcalPer100g,
                 kcalPerUnit = pending.analysis.kcalPerUnit,
+                gramsPerUnit = pending.analysis.gramsPerUnit,
+                packageGrams = pending.analysis.packageGrams,
                 servingDescription = pending.analysis.servingDescription,
                 imagePath = imagePath,
                 imageUrl = pending.imageUrl,
@@ -88,19 +90,23 @@ class ResultViewModel(
             )
             foodRepo.upsert(foodEntry)
 
-            val kcalSnapshot = estimateKcal(pending.analysis, percentageEaten)
-            val consumedFactor = consumedFactorOf100g(pending.analysis, percentageEaten)
-            val consumedNutrients = pending.analysis.nutrientsPer100g
-                ?.takeIf { consumedFactor != null }
-                ?.scaledBy(consumedFactor!!)
+            val kcalSnapshot = kcalForGrams(pending.analysis, gramsEaten)
+            val factor = gramsEaten / 100.0
+            val consumedNutrients = pending.analysis.nutrientsPer100g?.scaledBy(factor)
             val consumedNutrientsJson = consumedNutrients?.let {
                 Http.Json.encodeToString(Nutrients.serializer(), it)
             }
 
+            // Legacy percentage_eaten: how many "100g basis units" did they eat,
+            // expressed as a 0-100 int just so older sync paths don't choke. New
+            // consumers read gramsEaten.
+            val legacyPct = ((gramsEaten / 100.0) * 100.0).toInt().coerceIn(0, 999)
+
             val log = ConsumptionLog(
                 clientUuid = UUID.randomUUID().toString(),
                 foodClientUuid = foodUuid,
-                percentageEaten = percentageEaten.coerceIn(0, 100),
+                percentageEaten = legacyPct.coerceAtMost(100),
+                gramsEaten = gramsEaten,
                 eatenAt = now,
                 kcalConsumedSnapshot = kcalSnapshot,
                 nutrientsConsumedJson = consumedNutrientsJson,
@@ -123,33 +129,19 @@ class ResultViewModel(
 
     private fun defaultDir(): File = File(System.getProperty("java.io.tmpdir") ?: "/tmp")
 
-    private fun estimateKcal(analysis: FoodAnalysis, pct: Int): Double? {
-        val kcal100 = analysis.kcalPer100g
-        val kcalUnit = analysis.kcalPerUnit
-        val factor = pct / 100.0
-        return when {
-            kcalUnit != null -> kcalUnit * factor
-            kcal100 != null -> kcal100 * factor
-            else -> null
-        }
-    }
-
     /**
-     * Returns the multiplier we should apply to per-100g nutrient values
-     * to get the consumed amount. Derived from kcalPerUnit / kcalPer100g
-     * (giving us the unit's mass) when both are known; otherwise falls
-     * back to the percentage of a 100g portion.
+     * kcal for a given gram amount. Prefers per-100g (most precise); falls
+     * back to per-unit scaled by grams_per_unit. Returns null when neither
+     * is known.
      */
-    private fun consumedFactorOf100g(analysis: FoodAnalysis, pct: Int): Double? {
-        val pctFactor = pct / 100.0
-        val kcal100 = analysis.kcalPer100g
-        val kcalUnit = analysis.kcalPerUnit
-        val gramsConsumed = when {
-            kcal100 != null && kcal100 > 0 && kcalUnit != null -> (kcalUnit / kcal100) * 100.0 * pctFactor
-            kcalUnit != null || kcal100 != null -> 100.0 * pctFactor
-            else -> return null
+    private fun kcalForGrams(analysis: FoodAnalysis, grams: Double): Double? {
+        analysis.kcalPer100g?.let { return it * (grams / 100.0) }
+        val perUnit = analysis.kcalPerUnit
+        val gramsPerUnit = analysis.gramsPerUnit
+        if (perUnit != null && gramsPerUnit != null && gramsPerUnit > 0) {
+            return perUnit * (grams / gramsPerUnit)
         }
-        return gramsConsumed / 100.0
+        return null
     }
 
     companion object {

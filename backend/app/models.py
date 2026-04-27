@@ -76,6 +76,8 @@ class FoodEntry(SQLModel, table=True):
 
     kcal_per_100g: float | None = None
     kcal_per_unit: float | None = None
+    grams_per_unit: float | None = None
+    package_grams: float | None = None
     serving_description: str | None = None
 
     image_url: str | None = None
@@ -98,6 +100,7 @@ class ConsumptionLog(SQLModel, table=True):
     food_client_uuid: str = Field(index=True)
 
     percentage_eaten: int
+    grams_eaten: float | None = None
     eaten_at: datetime = Field(index=True)
 
     lat: float | None = None

@@ -11,6 +11,8 @@ export interface FoodEntryDto {
   nova_rationale: string;
   kcal_per_100g: number | null;
   kcal_per_unit: number | null;
+  grams_per_unit: number | null;
+  package_grams: number | null;
   serving_description: string | null;
   image_url: string | null;
   ingredients_json: string;
@@ -25,6 +27,7 @@ export interface ConsumptionLogDto {
   client_uuid: string;
   food_client_uuid: string;
   percentage_eaten: number;
+  grams_eaten: number | null;
   eaten_at: string;
   lat: number | null;
   lng: number | null;

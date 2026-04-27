@@ -48,6 +48,13 @@ def _ensure_evolved_columns() -> None:
             ("restricted_days_mask", "INTEGER NOT NULL DEFAULT 0"),
             ("restricted_kcal_target", "INTEGER"),
         ],
+        "food_entries": [
+            ("grams_per_unit", "REAL"),
+            ("package_grams", "REAL"),
+        ],
+        "consumption_logs": [
+            ("grams_eaten", "REAL"),
+        ],
     }
     if not engine.url.drivername.startswith("sqlite"):
         # ALTER TABLE syntax differs per dialect; only run for SQLite,

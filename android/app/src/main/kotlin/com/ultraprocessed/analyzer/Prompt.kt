@@ -23,6 +23,8 @@ internal object Prompt {
           "novaRationale": string (one or two short sentences explaining the class),
           "kcalPer100g": number or null,
           "kcalPerUnit": number or null,
+          "grams_per_unit": number or null (weight of one serving/unit in grams),
+          "package_grams": number or null (total package weight if a multi-serving pack),
           "servingDescription": string or null,
           "ingredients": array of strings (most processed/notable items first; can be empty),
           "confidence": number between 0 and 1,
@@ -71,6 +73,11 @@ internal object Prompt {
             no recognizable shape).
           - For unbranded items, leave brand null. Provide a typical kcalPer100g and
             kcalPerUnit when you can (e.g., a medium apple ≈ 95 kcal).
+          - Always estimate grams_per_unit when you provide kcalPerUnit so the user
+            can pick "1 serving" portions in grams. Typical values: medium apple
+            ~180g, slice of bread ~30g, can of soda ~330g, ready meal ~350-450g.
+          - For packaged ready meals or multi-serving packs, estimate package_grams
+            from typical UK supermarket sizings if you can see the product.
           - For images where multiple foods could plausibly match (a round red fruit
             could be apple, peach, plum), include up to 3 alternatives in the
             `alternatives` array, each with its own NOVA class and kcal estimate.

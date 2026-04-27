@@ -15,16 +15,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,23 +35,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ultraprocessed.analyzer.FoodAlternative
 import com.ultraprocessed.analyzer.FoodAnalysis
-import com.ultraprocessed.ui.components.NutrientBreakdown
-import kotlinx.coroutines.launch
 import com.ultraprocessed.theme.Semantic
 import com.ultraprocessed.theme.Tokens
 import com.ultraprocessed.theme.novaColor
@@ -57,9 +54,12 @@ import com.ultraprocessed.ui.MainViewModel
 import com.ultraprocessed.ui.PendingResult
 import com.ultraprocessed.ui.components.NovaDigit
 import com.ultraprocessed.ui.components.NovaScale
+import com.ultraprocessed.ui.components.NutrientBreakdown
 import com.ultraprocessed.ui.components.Overline
 import com.ultraprocessed.ui.components.PrimaryButton
 import com.ultraprocessed.ui.components.SecondaryButton
+import kotlinx.coroutines.launch
+import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 
 @Composable
@@ -76,8 +76,6 @@ fun ResultScreen(
         return
     }
 
-    var percentage by remember { mutableStateOf(100f) }
-    // Selected index: -1 = primary, 0..n-1 = alternative index, -2 = manual override.
     var selectedAltIndex by remember { mutableIntStateOf(-1) }
     var manualOverride by remember { mutableStateOf<FoodAnalysis?>(null) }
     var manualEntryActive by remember { mutableStateOf(false) }
@@ -102,6 +100,12 @@ fun ResultScreen(
             }
         }
     }
+
+    // Default: whole pack if known; else one serving; else 100g.
+    var grams by remember(analysis) {
+        mutableStateOf(analysis.packageGrams ?: analysis.gramsPerUnit ?: 100.0)
+    }
+    var customMode by remember(analysis) { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -212,54 +216,34 @@ fun ResultScreen(
         Divider()
         Spacer(Modifier.height(Tokens.Space.s5))
 
-        KcalLine(analysis.kcalPer100g, analysis.kcalPerUnit, percentage.toInt())
-
-        analysis.nutrientsPer100g?.let { nutrients ->
-            val factor = consumedFactorOf100g(analysis, percentage.toInt())
-            if (factor != null) {
-                Spacer(Modifier.height(Tokens.Space.s5))
-                NutrientBreakdown(
-                    nutrientsPer100g = nutrients,
-                    factorOf100g = factor
-                )
-            }
-        }
-
-        Spacer(Modifier.height(Tokens.Space.s6))
         Overline(text = "How much did you eat?")
         Spacer(Modifier.height(Tokens.Space.s3))
+        PortionPicker(
+            analysis = analysis,
+            grams = grams,
+            customMode = customMode,
+            onSelect = { g -> grams = g; customMode = false },
+            onCustomTap = { customMode = true },
+            onCustomGrams = { grams = it }
+        )
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Slider(
-                value = percentage,
-                onValueChange = { percentage = it },
-                valueRange = 0f..100f,
-                steps = 19, // 5% steps
-                modifier = Modifier.weight(1f),
-                colors = SliderDefaults.colors(
-                    thumbColor = Semantic.colors.accent,
-                    activeTrackColor = Semantic.colors.accent,
-                    inactiveTrackColor = Semantic.colors.surface3
-                )
-            )
-            Spacer(Modifier.size(Tokens.Space.s4))
-            Text(
-                text = "${percentage.roundToInt()}%",
-                color = Semantic.colors.inkHigh,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Medium
+        Spacer(Modifier.height(Tokens.Space.s5))
+        KcalLine(grams = grams, analysis = analysis)
+
+        analysis.nutrientsPer100g?.let { nutrients ->
+            Spacer(Modifier.height(Tokens.Space.s5))
+            NutrientBreakdown(
+                nutrientsPer100g = nutrients,
+                factorOf100g = grams / 100.0
             )
         }
 
         Spacer(Modifier.height(Tokens.Space.s6))
         PrimaryButton(
-            label = "I ate it",
+            label = "I ate it (${grams.roundToInt()} g)",
             onClick = {
                 val toLog = current.copy(analysis = analysis)
-                resultVm.logConsumption(toLog, percentage.roundToInt()) { onDone() }
+                resultVm.logConsumption(toLog, grams) { onDone() }
             }
         )
         Spacer(Modifier.height(Tokens.Space.s3))
@@ -296,37 +280,48 @@ private fun Divider() {
 }
 
 @Composable
-private fun KcalLine(kcalPer100g: Double?, kcalPerUnit: Double?, pct: Int) {
-    val (number, unit) = when {
-        kcalPerUnit != null -> {
-            val n = (kcalPerUnit * pct / 100.0).roundToInt()
-            "$n" to "kcal at $pct%"
-        }
-        kcalPer100g != null -> {
-            val n = (kcalPer100g * pct / 100.0).roundToInt()
-            "$n" to "kcal at $pct% of 100g"
-        }
-        else -> "" to "calories unknown"
+private fun KcalLine(grams: Double, analysis: FoodAnalysis) {
+    val kcal: Int? = run {
+        val perGram: Double? = analysis.kcalPer100g?.let { it / 100.0 }
+            ?: run {
+                val perUnit = analysis.kcalPerUnit
+                val gramsPerUnit = analysis.gramsPerUnit
+                if (perUnit != null && gramsPerUnit != null && gramsPerUnit > 0)
+                    perUnit / gramsPerUnit
+                else null
+            }
+        perGram?.let { (it * grams).roundToInt() }
     }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Bottom
-    ) {
-        if (number.isNotEmpty()) {
+    val basisHint = when {
+        analysis.kcalPer100g != null -> "values per 100g, scaled to ${grams.roundToInt()} g"
+        analysis.kcalPerUnit != null && analysis.gramsPerUnit != null ->
+            "from per-serving (${analysis.gramsPerUnit!!.roundToInt()} g)"
+        else -> "calorie info missing"
+    }
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+        if (kcal != null) {
             Text(
-                text = number,
+                text = kcal.toString(),
                 color = Semantic.colors.inkHigh,
                 fontSize = 56.sp,
                 style = MaterialTheme.typography.displaySmall.copy(textAlign = TextAlign.Start)
             )
             Spacer(Modifier.size(Tokens.Space.s3))
         }
-        Text(
-            text = unit,
-            color = Semantic.colors.inkMid,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
+        Column(modifier = Modifier.padding(bottom = 8.dp)) {
+            if (kcal != null) {
+                Text(
+                    text = "kcal",
+                    color = Semantic.colors.inkMid,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            Text(
+                text = basisHint,
+                color = Semantic.colors.inkLow,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
     }
 }
 
@@ -338,21 +333,104 @@ private fun novaLabel(novaClass: Int): String = when (novaClass) {
     else -> "Unknown"
 }
 
-/**
- * Mirrors [com.ultraprocessed.ui.result.ResultViewModel.consumedFactorOf100g]
- * so the nutrient breakdown reflects the slider in real time without a
- * round-trip to the ViewModel.
- */
-private fun consumedFactorOf100g(analysis: FoodAnalysis, pct: Int): Double? {
-    val pctFactor = pct / 100.0
-    val kcal100 = analysis.kcalPer100g
-    val kcalUnit = analysis.kcalPerUnit
-    val gramsConsumed = when {
-        kcal100 != null && kcal100 > 0 && kcalUnit != null -> (kcalUnit / kcal100) * 100.0 * pctFactor
-        kcalUnit != null || kcal100 != null -> 100.0 * pctFactor
-        else -> return null
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PortionPicker(
+    analysis: FoodAnalysis,
+    grams: Double,
+    customMode: Boolean,
+    onSelect: (Double) -> Unit,
+    onCustomTap: () -> Unit,
+    onCustomGrams: (Double) -> Unit
+) {
+    val presets = remember(analysis) {
+        buildList<Pair<Double, String>> {
+            add(100.0 to "100 g")
+            analysis.gramsPerUnit
+                ?.takeIf { it > 0 && it != 100.0 && it != analysis.packageGrams }
+                ?.let {
+                    val descr = analysis.servingDescription?.takeIf { d -> d.isNotBlank() }
+                        ?: "1 serving"
+                    add(it to "$descr · ${it.roundToInt()} g")
+                }
+            analysis.packageGrams
+                ?.takeIf { it > 0 && it != 100.0 && it != analysis.gramsPerUnit }
+                ?.let { add(it to "Whole pack · ${it.roundToInt()} g") }
+        }.distinctBy { it.first }
     }
-    return gramsConsumed / 100.0
+
+    var customText by remember(analysis, customMode) {
+        mutableStateOf(if (customMode) grams.roundToInt().toString() else "")
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Tokens.Space.s2),
+            verticalArrangement = Arrangement.spacedBy(Tokens.Space.s2)
+        ) {
+            presets.forEach { (g, label) ->
+                PortionChip(
+                    label = label,
+                    selected = !customMode && (grams - g).absoluteValue < 0.5,
+                    onClick = { onSelect(g) }
+                )
+            }
+            PortionChip(
+                label = "Custom",
+                selected = customMode,
+                onClick = onCustomTap
+            )
+        }
+        if (customMode) {
+            Spacer(Modifier.height(Tokens.Space.s3))
+            OutlinedTextField(
+                value = customText,
+                onValueChange = { raw ->
+                    customText = raw.filter { it.isDigit() || it == '.' }.take(6)
+                    customText.toDoubleOrNull()?.takeIf { it >= 0 }?.let(onCustomGrams)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text("Grams eaten") },
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = ImeAction.Done
+                ),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Semantic.colors.surface1,
+                    unfocusedContainerColor = Semantic.colors.surface1,
+                    focusedTextColor = Semantic.colors.inkHigh,
+                    unfocusedTextColor = Semantic.colors.inkHigh,
+                    focusedIndicatorColor = Semantic.colors.accent,
+                    unfocusedIndicatorColor = Semantic.colors.surface3,
+                    cursorColor = Semantic.colors.accent
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun PortionChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(Tokens.Radius.lg))
+            .background(if (selected) Semantic.colors.accent else Semantic.colors.surface2)
+            .clickable(onClick = onClick)
+            .padding(horizontal = Tokens.Space.s4, vertical = Tokens.Space.s2)
+    ) {
+        Text(
+            text = label,
+            color = if (selected) Semantic.colors.inkInverse else Semantic.colors.inkHigh,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium
+        )
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)

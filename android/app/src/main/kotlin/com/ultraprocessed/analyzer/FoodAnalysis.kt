@@ -30,6 +30,14 @@ data class FoodAnalysis(
     /** Calories for one typical unit (one apple, one bar). */
     val kcalPerUnit: Double? = null,
 
+    /** Weight in grams of one typical unit/serving (e.g. 180 for a medium apple). */
+    @kotlinx.serialization.SerialName("grams_per_unit")
+    val gramsPerUnit: Double? = null,
+
+    /** Total package weight in grams (when scanning a multi-serving pack). */
+    @kotlinx.serialization.SerialName("package_grams")
+    val packageGrams: Double? = null,
+
     /** Description of "one unit" (e.g. "1 medium apple, ~180g"). */
     val servingDescription: String? = null,
 
