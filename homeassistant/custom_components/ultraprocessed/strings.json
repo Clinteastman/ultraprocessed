@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Ultraprocessed",
+        "description": "Point this at your self-hosted backend. The device token is the same one paired from the phone or dashboard.",
+        "data": {
+          "base_url": "Backend URL",
+          "token": "Device token"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Couldn't reach the backend at that URL.",
+      "invalid_auth": "Backend rejected the device token. Re-pair from the dashboard or phone."
+    },
+    "abort": {
+      "already_configured": "This backend is already set up."
+    }
+  }
+}

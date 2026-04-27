@@ -1,0 +1,13 @@
+{
+  "domain": "ultraprocessed",
+  "name": "Ultraprocessed",
+  "codeowners": ["@Clinteastman"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/Clinteastman/ultraprocessed",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/Clinteastman/ultraprocessed/issues",
+  "requirements": ["aiohttp>=3.9.0"],
+  "version": "0.1.0"
+}
