@@ -1,0 +1,42 @@
+# Keep the build context lean and avoid host artifacts overwriting
+# freshly-installed deps inside the image.
+
+# Version control
+.git
+.gitattributes
+.gitignore
+
+# Dashboard
+dashboard/node_modules
+dashboard/build
+dashboard/.svelte-kit
+dashboard/.vite
+
+# Python / backend
+**/__pycache__
+**/*.pyc
+backend/.venv
+backend/.pytest_cache
+backend/.mypy_cache
+backend/.ruff_cache
+backend/data
+backend/*.db
+backend/*.sqlite
+
+# Android (we don't copy android/ into the backend image, but keep it
+# excluded for safety + faster context uploads).
+android/.gradle
+android/build
+android/**/build
+android/.idea
+android/local.properties
+
+# Docs / IDE
+docs
+.idea
+.vscode
+*.code-workspace
+
+# Deploy bits we don't ship in the image
+deploy
+.github

@@ -3,8 +3,10 @@ name: ultraprocessed
 services:
   backend:
     build:
-      context: ../backend
-      dockerfile: Dockerfile
+      # Repo root is the build context so the Dockerfile can copy both
+      # backend/ and dashboard/ into the image.
+      context: ..
+      dockerfile: backend/Dockerfile
     image: ultraprocessed/backend:dev
     container_name: ultraprocessed-backend
     restart: unless-stopped
@@ -17,9 +19,6 @@ services:
       - "${ULTRAPROCESSED_PORT:-8000}:8000"
     volumes:
       - backend-data:/app/data
-      # Build dashboard first (cd dashboard && pnpm build) - this mount lets
-      # the backend serve the resulting static SPA at /.
-      - ../dashboard/build:/app/dashboard:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health').status==200 else 1)"]
       interval: 30s

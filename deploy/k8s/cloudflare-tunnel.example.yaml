@@ -1,0 +1,36 @@
+# Reference snippet only - merge into the ConfigMap (or Tunnel CRD) you
+# already use to drive cloudflared in your cluster. Replace the hostname
+# with whatever subdomain you want for the dashboard.
+#
+# If you use the Cloudflare Operator (Tunnel CRD):
+#
+# apiVersion: cloudflare.com/v1
+# kind: TunnelBinding
+# metadata:
+#   name: ultraprocessed
+#   namespace: ultraprocessed
+# spec:
+#   subjects:
+#     - kind: Service
+#       name: ultraprocessed-backend
+#   template:
+#     spec:
+#       hostname: ultraprocessed.your-domain.com
+#       service: http://ultraprocessed-backend:80
+#
+# If you use a plain cloudflared ConfigMap:
+#
+# apiVersion: v1
+# kind: ConfigMap
+# metadata:
+#   name: cloudflared-config
+#   namespace: cloudflared
+# data:
+#   config.yaml: |
+#     tunnel: <your-tunnel-id>
+#     credentials-file: /etc/cloudflared/creds/credentials.json
+#     ingress:
+#       # ... your existing routes ...
+#       - hostname: ultraprocessed.your-domain.com
+#         service: http://ultraprocessed-backend.ultraprocessed.svc.cluster.local:80
+#       - service: http_status:404
