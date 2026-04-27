@@ -100,6 +100,108 @@ docker compose -f compose.prod.yml down
 docker compose -f compose.prod.yml down -v
 ```
 
+## Bug-testing iteration loop
+
+Active development pattern - edit, push, deploy, watch, repeat. Use this when you're iterating, not for production rollouts.
+
+### Standard cycle (push to main -> Actions -> deploy)
+
+GitHub Actions takes ~5 min to build amd64+arm64 and push to GHCR. Pulling before that finishes gets you the previous image with a misleading "no changes" message.
+
+The one-liner that does it all - push, wait for the build, deploy on K12:
+
+```bash
+deploy/redeploy.sh                  # waits for Actions, pulls, up -d, tails 20 lines
+deploy/redeploy.sh --no-wait        # if you've already waited; pull+up immediately
+deploy/redeploy.sh --no-pull        # compose changes only, don't pull a new image
+```
+
+Or by hand:
+
+```bash
+git push
+gh run watch --exit-status $(gh run list --limit 1 --json databaseId --jq '.[0].databaseId')
+ssh root@192.168.50.60 "cd /opt/stacks/ultraprocessed && git pull && cd deploy \
+  && docker compose -f compose.prod.yml pull \
+  && docker compose -f compose.prod.yml up -d \
+  && docker logs --tail=20 ultraprocessed-backend"
+```
+
+### What SHA is running right now
+
+Three ways, increasingly precise:
+
+```bash
+# Image tag (probably ":latest", not informative for dev work)
+ssh root@192.168.50.60 "docker inspect ultraprocessed-backend --format '{{.Config.Image}}'"
+
+# Image content hash (changes every build, not human-readable)
+ssh root@192.168.50.60 "docker inspect ultraprocessed-backend --format '{{.Image}}'"
+
+# Git SHA the image was built from (what you actually want)
+ssh root@192.168.50.60 "docker inspect ultraprocessed-backend \
+  --format '{{index .Config.Labels \"org.opencontainers.image.revision\"}}'"
+```
+
+The last one is set by `docker/metadata-action` automatically and gives you the commit SHA. If it's empty, the build predates the OCI labels and you're flying blind - rebuild and redeploy.
+
+### Two-shell pattern: tail-and-deploy
+
+Run these in two separate terminals:
+
+```bash
+# shell 1 - leave running
+ssh root@192.168.50.60 "docker logs -f --tail=50 ultraprocessed-backend"
+
+# shell 2 - your edit/push loop
+deploy/redeploy.sh
+```
+
+When the deploy completes, the new container starts up and shell 1 immediately shows the startup logs. No SSH dance per cycle.
+
+### Skipping GHCR for tight loops (build on the host)
+
+When you're chasing a specific bug and 5-min Actions cycles are too slow, build the image directly on K12 against your local code:
+
+```bash
+# Sync your in-progress code to the host (rsync or git push to a working branch)
+rsync -avz --exclude=.git --exclude=node_modules ./ root@192.168.50.60:/opt/stacks/ultraprocessed/
+
+# Build + run on the host, bypassing GHCR
+ssh root@192.168.50.60 "cd /opt/stacks/ultraprocessed && \
+  docker build -t ultraprocessed-backend:dev -f backend/Dockerfile . && \
+  cd deploy && \
+  ULTRAPROCESSED_IMAGE=ultraprocessed-backend:dev \
+    docker compose -f compose.prod.yml up -d --force-recreate"
+```
+
+When the bug's fixed, push to GitHub, wait for Actions, then `unset ULTRAPROCESSED_IMAGE` (or remove from `.env`) and `redeploy.sh` to go back to the GHCR image.
+
+The dev image and the GHCR image use the same volume, so SQLite data is preserved across the back-and-forth.
+
+### Fast rollback when an iteration breaks things
+
+```bash
+# What images are still on the host?
+ssh root@192.168.50.60 "docker images ghcr.io/clinteastman/ultraprocessed-backend"
+
+# Pin .env to a specific SHA tag (older successful build)
+ssh root@192.168.50.60 "echo 'ULTRAPROCESSED_IMAGE=ghcr.io/clinteastman/ultraprocessed-backend:sha-<previous-sha>' \
+  >> /opt/stacks/ultraprocessed/deploy/.env"
+ssh root@192.168.50.60 "cd /opt/stacks/ultraprocessed/deploy && \
+  docker compose -f compose.prod.yml pull && \
+  docker compose -f compose.prod.yml up -d --force-recreate"
+```
+
+After fixing forward, **remove the pin** from `.env` so future deploys pick up `:latest` again.
+
+### Things to watch for during iteration
+
+- **DB schema migrations.** This app creates schema on first boot but doesn't auto-migrate existing rows. If you add a non-nullable column without a default, the existing SQLite DB will refuse to start. Either ship a migration step in code, or `docker compose down -v` and lose the data (only acceptable in dev, never with real user data).
+- **Stale `:latest` tag in Docker.** `docker compose pull` pulls if the remote digest changed. If for some reason it's not pulling fresh, force it: `docker pull ghcr.io/clinteastman/ultraprocessed-backend:latest --disable-content-trust=false`.
+- **Healthcheck race during recreate.** `up -d` recreates and the healthcheck has a 20s start period. If you're spamming redeploys you can hit a brief window where the container is `starting` and `/api/v1/health` returns connection refused at the cloudflared layer. Wait for `(healthy)` in `docker ps` before retrying.
+- **Env vars from `.env` only reload on `up -d`, not `restart`.** If you're tweaking `.env`, always `up -d` (which recreates), never `restart` (which just restarts the existing container with stale env).
+
 ## Updating to a newer image
 
 The GitHub Actions workflow rebuilds `:latest` on every push to main, plus a `:sha-<commit>` tag. To pull and roll forward:
