@@ -6,7 +6,9 @@
   import NutrientBar from "$lib/components/NutrientBar.svelte";
   import CalorieChart from "$lib/components/CalorieChart.svelte";
   import DateRangePicker, { type DateRange } from "$lib/components/DateRangePicker.svelte";
+  import DietScoreCard from "$lib/components/DietScoreCard.svelte";
   import FastingStatus from "$lib/components/FastingStatus.svelte";
+  import UpfShareCard from "$lib/components/UpfShareCard.svelte";
 
   let aggregate = $state<AggregateResponse | null>(null);
   let logs = $state<ConsumptionLogDto[]>([]);
@@ -83,24 +85,49 @@
     }
   }
 
-  // Bucket logs by day for the calorie chart.
+  // Bucket logs hourly for single-day ranges, daily for multi-day.
   const calorieBuckets = $derived.by(() => {
-    const days: Map<string, { label: string; kcal: number; iso: string }> = new Map();
-    const dayMs = 24 * 60 * 60 * 1000;
+    const hourMs = 60 * 60 * 1000;
+    const dayMs = 24 * hourMs;
+    const spanMs = range.to.getTime() - range.from.getTime();
 
-    // Pre-fill empty days so we get a continuous bar chart.
+    if (spanMs < dayMs * 1.5) {
+      const buckets: { label: string; kcal: number; iso: string }[] = [];
+      const start = new Date(range.from);
+      start.setHours(0, 0, 0, 0);
+      for (let h = 0; h < 24; h++) {
+        const d = new Date(start.getTime() + h * hourMs);
+        buckets.push({
+          label: `${h.toString().padStart(2, "0")}:00`,
+          kcal: 0,
+          iso: d.toISOString()
+        });
+      }
+      for (const log of logs) {
+        const eaten = new Date(log.eaten_at);
+        // Only include logs that fall on the start day (handles tz weirdness).
+        if (
+          eaten.getFullYear() === start.getFullYear() &&
+          eaten.getMonth() === start.getMonth() &&
+          eaten.getDate() === start.getDate()
+        ) {
+          const h = eaten.getHours();
+          buckets[h].kcal += log.kcal_consumed_snapshot ?? 0;
+        }
+      }
+      return buckets;
+    }
+
+    const days: Map<string, { label: string; kcal: number; iso: string }> = new Map();
     const start = new Date(range.from);
     start.setHours(0, 0, 0, 0);
     const end = new Date(range.to);
     end.setHours(0, 0, 0, 0);
     const dayCount = Math.max(1, Math.round((end.getTime() - start.getTime()) / dayMs) + 1);
-
     for (let i = 0; i < dayCount; i++) {
       const d = new Date(start.getTime() + i * dayMs);
       const iso = d.toISOString().slice(0, 10);
-      const label = dayCount <= 1
-        ? d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })
-        : d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+      const label = d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
       days.set(iso, { label, kcal: 0, iso });
     }
     for (const log of logs) {
@@ -124,9 +151,12 @@
       let label: string;
       if (dayIso === todayKey) label = "Today";
       else if (dayIso === yesterdayKey) label = "Yesterday";
-      else label = new Date(log.eaten_at).toLocaleDateString(undefined, {
-        weekday: "short", day: "numeric", month: "short"
-      });
+      else
+        label = new Date(log.eaten_at).toLocaleDateString(undefined, {
+          weekday: "short",
+          day: "numeric",
+          month: "short"
+        });
       const last = groups[groups.length - 1];
       if (last && last.label === label) last.entries.push(log);
       else groups.push({ label, entries: [log] });
@@ -146,20 +176,6 @@
     return Object.keys(aggregate.nutrients_adequacy)
       .filter((k) => !MACRO_KEYS.includes(k))
       .map((k) => ({ name: NUTRIENT_LABELS[k] ?? k, key: k, data: aggregate!.nutrients_adequacy[k] }));
-  });
-
-  const novaPercents = $derived.by(() => {
-    if (!aggregate) return [];
-    const total = Object.values(aggregate.nova_breakdown).reduce((sum, b) => sum + b.calories, 0);
-    return [1, 2, 3, 4].map((cls) => {
-      const bucket = aggregate!.nova_breakdown[cls.toString()] ?? { meals: 0, calories: 0 };
-      return {
-        cls,
-        meals: bucket.meals,
-        calories: bucket.calories,
-        pct: total > 0 ? (bucket.calories / total) * 100 : 0
-      };
-    });
   });
 
   function timeLabel(iso: string): string {
@@ -192,38 +208,38 @@
       {error}
     </div>
   {:else if aggregate}
-    <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <div class="rounded-lg bg-surface-1 p-6 col-span-2">
-        <p class="text-xs uppercase tracking-wider text-ink-mid mb-2">Calories</p>
-        <div class="flex items-baseline gap-3">
-          <span class="font-display text-6xl">{aggregate.calories_consumed.toFixed(0)}</span>
-          <span class="text-ink-mid">
-            kcal of {aggregate.calorie_reference.toFixed(0)} target
-            {#if range.preset !== "today" && range.preset !== "yesterday"}
-              <span class="text-ink-lo">(period total)</span>
-            {/if}
-          </span>
-        </div>
-        <p class="mt-2 text-sm text-ink-mid">
-          {aggregate.meal_count} meal{aggregate.meal_count === 1 ? "" : "s"}
-          · NOVA average {aggregate.nova_average?.toFixed(2) ?? "n/a"}
-        </p>
-        <div class="mt-5">
-          <CalorieChart buckets={calorieBuckets} target={aggregate.calorie_reference} />
-        </div>
-      </div>
+    <!-- Twin hero cards: how processed your diet is, and the UPF share. -->
+    <section class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <DietScoreCard
+        novaAverage={aggregate.nova_average}
+        mealCount={aggregate.meal_count}
+      />
+      <UpfShareCard
+        novaBreakdown={aggregate.nova_breakdown}
+        totalKcal={aggregate.calories_consumed}
+      />
+    </section>
 
-      <div class="rounded-lg bg-surface-1 p-6">
-        <p class="text-xs uppercase tracking-wider text-ink-mid mb-3">NOVA breakdown</p>
-        {#each novaPercents as bucket}
-          <div class="flex items-center justify-between py-1">
-            <NovaPill novaClass={bucket.cls} />
-            <span class="text-sm tabular-nums text-ink-mid">
-              {bucket.calories.toFixed(0)} kcal
-              <span class="text-ink-lo">({bucket.pct.toFixed(0)}%)</span>
+    <section class="rounded-lg bg-surface-1 p-6">
+      <div class="flex flex-wrap items-baseline justify-between gap-3">
+        <div>
+          <p class="text-xs uppercase tracking-wider text-ink-mid">Calories</p>
+          <div class="flex items-baseline gap-3 mt-1">
+            <span class="font-display text-5xl">{aggregate.calories_consumed.toFixed(0)}</span>
+            <span class="text-ink-mid">
+              of {aggregate.calorie_reference.toFixed(0)} kcal target
+              {#if range.preset !== "today" && range.preset !== "yesterday"}
+                <span class="text-ink-lo">(period total)</span>
+              {/if}
             </span>
           </div>
-        {/each}
+        </div>
+        <p class="text-sm text-ink-mid">
+          {aggregate.meal_count} meal{aggregate.meal_count === 1 ? "" : "s"}
+        </p>
+      </div>
+      <div class="mt-5">
+        <CalorieChart buckets={calorieBuckets} target={aggregate.calorie_reference} />
       </div>
     </section>
 
@@ -290,8 +306,11 @@
                             {food?.name ?? "Unknown food"}
                           </p>
                           <p class="text-xs text-ink-mid">
-                            {timeLabel(log.eaten_at)} · {log.percentage_eaten}% ·
-                            {(log.kcal_consumed_snapshot ?? 0).toFixed(0)} kcal
+                            {timeLabel(log.eaten_at)} ·
+                            {log.grams_eaten != null
+                              ? `${Math.round(log.grams_eaten)} g`
+                              : `${log.percentage_eaten}%`}
+                            · {(log.kcal_consumed_snapshot ?? 0).toFixed(0)} kcal
                           </p>
                         </div>
                       </a>
