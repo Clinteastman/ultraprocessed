@@ -44,6 +44,12 @@ class Settings(BaseSettings):
         description="Directory of built SvelteKit assets. Served at /.",
     )
 
+    # ---- Uploaded food images ----
+    images_dir: Path = Field(
+        default=Path("./data/images"),
+        description="Where uploaded food images are stored on disk. Served at /images.",
+    )
+
     # ---- Open Food Facts ----
     off_user_agent: str = "Ultraprocessed/0.1 (https://github.com/Clinteastman/ultraprocessed)"
     off_cache_ttl_seconds: int = 60 * 60 * 24 * 7  # 7 days

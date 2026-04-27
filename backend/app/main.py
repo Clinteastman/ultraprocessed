@@ -41,6 +41,12 @@ def create_app() -> FastAPI:
 
     app.include_router(v1_router)
 
+    # Uploaded food images. Mounted before the dashboard fallback so
+    # GET /images/... resolves directly to the file rather than the
+    # SvelteKit single-page-app fallback.
+    settings.images_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/images", StaticFiles(directory=settings.images_dir), name="food-images")
+
     _mount_dashboard(app, settings.dashboard_dir)
     return app
 

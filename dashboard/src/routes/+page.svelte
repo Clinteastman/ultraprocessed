@@ -8,6 +8,7 @@
   import DateRangePicker, { type DateRange } from "$lib/components/DateRangePicker.svelte";
   import DietScoreCard from "$lib/components/DietScoreCard.svelte";
   import FastingStatus from "$lib/components/FastingStatus.svelte";
+  import NovaTrendChart from "$lib/components/NovaTrendChart.svelte";
   import UpfShareCard from "$lib/components/UpfShareCard.svelte";
 
   let aggregate = $state<AggregateResponse | null>(null);
@@ -51,8 +52,8 @@
 
   const MACRO_KEYS = ["protein_g", "fat_g", "saturated_fat_g", "carbs_g", "sugar_g", "fiber_g", "salt_g"];
 
-  async function load() {
-    loading = true;
+  async function load(silent = false) {
+    if (!silent) loading = true;
     error = null;
     try {
       const fromIso = range.from.toISOString();
@@ -68,11 +69,41 @@
     } catch (e) {
       error = e instanceof ApiError ? e.message : (e as Error).message;
     } finally {
-      loading = false;
+      if (!silent) loading = false;
     }
   }
 
-  onMount(load);
+  // Background poll: re-fetch every 20s while the tab is visible so the
+  // dashboard reflects new phone activity without a manual refresh. Pauses
+  // when hidden to avoid useless requests, and refreshes on visibility
+  // return so coming back to the tab gives current data immediately.
+  const POLL_MS = 20_000;
+  onMount(() => {
+    load();
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (timer) return;
+      timer = setInterval(() => load(true), POLL_MS);
+    };
+    const stop = () => {
+      if (timer) clearInterval(timer);
+      timer = null;
+    };
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        load(true);
+        start();
+      } else {
+        stop();
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    start();
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      stop();
+    };
+  });
 
   async function deleteLog(clientUuid: string) {
     if (!confirm("Delete this entry?")) return;
@@ -136,6 +167,79 @@
       if (bucket) bucket.kcal += log.kcal_consumed_snapshot ?? 0;
     }
     return Array.from(days.values());
+  });
+
+  // Daily kcal-weighted NOVA average for the trend chart. Uses the same
+  // daily / hourly bucketing as the calorie chart so the two read together.
+  const novaTrend = $derived.by(() => {
+    const hourMs = 60 * 60 * 1000;
+    const dayMs = 24 * hourMs;
+    const spanMs = range.to.getTime() - range.from.getTime();
+    const buckets: { label: string; novaAverage: number | null; kcal: number }[] = [];
+
+    if (spanMs < dayMs * 1.5) {
+      // Single day: hourly bucketing
+      const start = new Date(range.from);
+      start.setHours(0, 0, 0, 0);
+      const sums = Array.from({ length: 24 }, () => ({ weighted: 0, kcal: 0 }));
+      for (const log of logs) {
+        const eaten = new Date(log.eaten_at);
+        if (
+          eaten.getFullYear() !== start.getFullYear() ||
+          eaten.getMonth() !== start.getMonth() ||
+          eaten.getDate() !== start.getDate()
+        ) continue;
+        const food = foods.get(log.food_client_uuid);
+        if (!food) continue;
+        const kcal = log.kcal_consumed_snapshot ?? 0;
+        if (kcal <= 0) continue;
+        const h = eaten.getHours();
+        sums[h].weighted += food.nova_class * kcal;
+        sums[h].kcal += kcal;
+      }
+      for (let h = 0; h < 24; h++) {
+        const s = sums[h];
+        buckets.push({
+          label: `${h.toString().padStart(2, "0")}:00`,
+          novaAverage: s.kcal > 0 ? s.weighted / s.kcal : null,
+          kcal: s.kcal
+        });
+      }
+      return buckets;
+    }
+
+    // Multi-day: daily bucketing
+    const start = new Date(range.from);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(range.to);
+    end.setHours(0, 0, 0, 0);
+    const dayCount = Math.max(1, Math.round((end.getTime() - start.getTime()) / dayMs) + 1);
+    const days = new Map<string, { label: string; weighted: number; kcal: number }>();
+    for (let i = 0; i < dayCount; i++) {
+      const d = new Date(start.getTime() + i * dayMs);
+      const iso = d.toISOString().slice(0, 10);
+      const label = d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+      days.set(iso, { label, weighted: 0, kcal: 0 });
+    }
+    for (const log of logs) {
+      const iso = log.eaten_at.slice(0, 10);
+      const bucket = days.get(iso);
+      if (!bucket) continue;
+      const food = foods.get(log.food_client_uuid);
+      if (!food) continue;
+      const kcal = log.kcal_consumed_snapshot ?? 0;
+      if (kcal <= 0) continue;
+      bucket.weighted += food.nova_class * kcal;
+      bucket.kcal += kcal;
+    }
+    for (const v of days.values()) {
+      buckets.push({
+        label: v.label,
+        novaAverage: v.kcal > 0 ? v.weighted / v.kcal : null,
+        kcal: v.kcal
+      });
+    }
+    return buckets;
   });
 
   // Group consumption logs by day for the right column.
@@ -240,6 +344,27 @@
       </div>
       <div class="mt-5">
         <CalorieChart buckets={calorieBuckets} target={aggregate.calorie_reference} />
+      </div>
+    </section>
+
+    <section class="rounded-lg bg-surface-1 p-6">
+      <div class="flex flex-wrap items-baseline justify-between gap-3">
+        <div>
+          <p class="text-xs uppercase tracking-wider text-ink-mid">NOVA score trend</p>
+          <p class="text-sm text-ink-mid mt-1">
+            Calorie-weighted average per
+            {range.to.getTime() - range.from.getTime() < 1.5 * 24 * 60 * 60 * 1000 ? "hour" : "day"}.
+            Lower is better.
+          </p>
+        </div>
+        {#if aggregate.nova_average != null}
+          <p class="text-sm text-ink-mid">
+            Period average <span class="text-ink-hi font-medium">{aggregate.nova_average.toFixed(2)}</span>
+          </p>
+        {/if}
+      </div>
+      <div class="mt-5">
+        <NovaTrendChart buckets={novaTrend} />
       </div>
     </section>
 

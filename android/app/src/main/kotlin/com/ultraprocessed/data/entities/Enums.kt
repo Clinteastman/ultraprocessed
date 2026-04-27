@@ -29,12 +29,20 @@ enum class SyncState {
 }
 
 /**
- * Pre-baked fasting schedules. CUSTOM lets the user set their own window.
+ * Pre-baked fasting schedules.
+ *
+ * Time-restricted-eating (TRE) variants pin a daily eating window.
+ * Multi-day patterns (FIVE_TWO / FOUR_THREE / ADF) instead use a
+ * weekday bitmask with a kcal cap on restricted days. CUSTOM lets the
+ * user set either kind of pattern by hand.
  */
 enum class ScheduleType {
     SIXTEEN_EIGHT,
     EIGHTEEN_SIX,
     TWENTY_FOUR,
     OMAD,
+    FIVE_TWO,
+    FOUR_THREE,
+    ADF,
     CUSTOM
 }

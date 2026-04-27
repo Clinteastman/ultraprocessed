@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.io.File
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -103,7 +104,33 @@ class SyncCoordinator(
         }
         markLogsSynced(pendingLogs)
 
+        // Best-effort image upload for any synced food whose JPEG hasn't
+        // been pushed yet. Failures here don't fail the sync overall;
+        // the row stays image_synced=false so the next attempt retries.
+        uploadPendingImages(client)
+
         return SyncResult.Pushed(pendingFoods.size, pendingLogs.size)
+    }
+
+    private suspend fun uploadPendingImages(client: BackendClient) {
+        val pending = foodRepository.pendingImages()
+        if (pending.isEmpty()) return
+        Log.i(TAG, "uploading ${pending.size} food images")
+        for (food in pending) {
+            val path = food.imagePath ?: continue
+            val bytes = runCatching { File(path).readBytes() }.getOrNull()
+            if (bytes == null || bytes.isEmpty()) {
+                Log.w(TAG, "missing/empty image at $path; marking synced to skip")
+                foodRepository.upsert(food.copy(imageSynced = true))
+                continue
+            }
+            val result = client.uploadFoodImage(food.clientUuid, bytes)
+            if (result.isSuccess) {
+                foodRepository.upsert(food.copy(imageSynced = true))
+            } else {
+                Log.w(TAG, "image upload failed for ${food.clientUuid}: ${result.exceptionOrNull()?.message}")
+            }
+        }
     }
 
     private suspend fun markFoodsSynced(rows: List<FoodEntry>) {

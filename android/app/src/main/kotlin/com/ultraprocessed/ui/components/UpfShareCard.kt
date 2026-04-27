@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -122,6 +123,7 @@ private fun StackedBar(novaCalories: Map<Int, Double>, totalKcal: Double) {
                 Box(
                     modifier = Modifier
                         .weight(pct, fill = true)
+                        .fillMaxHeight()
                         .background(novaColorFor(cls))
                 )
             }

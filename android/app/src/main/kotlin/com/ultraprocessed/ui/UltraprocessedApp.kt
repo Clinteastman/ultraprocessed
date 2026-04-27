@@ -14,6 +14,7 @@ import com.ultraprocessed.ui.home.HomeScreen
 import com.ultraprocessed.ui.pairing.PairingScanScreen
 import com.ultraprocessed.ui.result.ResultScreen
 import com.ultraprocessed.ui.scan.ScanScreen
+import com.ultraprocessed.ui.search.SearchScreen
 import com.ultraprocessed.ui.settings.SettingsScreen
 
 /**
@@ -38,7 +39,14 @@ fun UltraprocessedApp() {
             composable(Routes.Home) {
                 HomeScreen(
                     onScanTap = { navController.navigate(Routes.Scan) },
+                    onSearchTap = { navController.navigate(Routes.Search) },
                     onOpenSettings = { navController.navigate(Routes.Settings) }
+                )
+            }
+            composable(Routes.Search) {
+                SearchScreen(
+                    onBack = { navController.popBackStack() },
+                    onLogged = { navController.popBackStack() }
                 )
             }
             composable(Routes.Scan) {

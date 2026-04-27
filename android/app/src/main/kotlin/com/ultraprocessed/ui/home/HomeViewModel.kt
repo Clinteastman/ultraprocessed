@@ -33,6 +33,9 @@ class HomeViewModel(
     private val _selected = MutableStateFlow(DateRangePreset.Today)
     val selected: StateFlow<DateRangePreset> = _selected.asStateFlow()
 
+    private val _customRange = MutableStateFlow<Pair<Long, Long>?>(null)
+    val customRange: StateFlow<Pair<Long, Long>?> = _customRange.asStateFlow()
+
     /**
      * The recent ConsumptionLog list. We over-fetch (last 1000 entries) so
      * a single Flow can drive every preset's aggregate, with filtering
@@ -40,14 +43,21 @@ class HomeViewModel(
      */
     private val recent = container.consumptionRepository.observeRecent(limit = 1000)
 
-    val window: StateFlow<DateRangeWindow> = _selected
-        .map { computeRangeWindow(it) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), computeRangeWindow(DateRangePreset.Today))
+    val window: StateFlow<DateRangeWindow> =
+        combine(_selected, _customRange) { preset, custom ->
+            computeRangeWindow(preset, custom?.first, custom?.second)
+        }.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            computeRangeWindow(DateRangePreset.Today)
+        )
 
     val state: StateFlow<HomeState> =
-        combine(_selected, recent) { preset, items -> preset to items }
-            .map { (preset, items) ->
-                val w = computeRangeWindow(preset)
+        combine(_selected, _customRange, recent) { preset, custom, items ->
+            Triple(preset, custom, items)
+        }
+            .map { (preset, custom, items) ->
+                val w = computeRangeWindow(preset, custom?.first, custom?.second)
                 HomeState(
                     window = w,
                     aggregation = aggregate(items, w.fromMs, w.toMs),
@@ -66,6 +76,11 @@ class HomeViewModel(
 
     fun selectPreset(preset: DateRangePreset) {
         _selected.value = preset
+    }
+
+    fun selectCustomRange(fromMs: Long, toMs: Long) {
+        _customRange.value = fromMs to toMs
+        _selected.value = DateRangePreset.Custom
     }
 
     fun updateGrams(item: ConsumptionWithFood, newGrams: Double) {

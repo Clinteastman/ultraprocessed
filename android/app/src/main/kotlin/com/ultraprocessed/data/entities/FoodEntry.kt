@@ -72,5 +72,13 @@ data class FoodEntry(
     val updatedAt: Long,
 
     @ColumnInfo(name = "sync_state")
-    val syncState: SyncState = SyncState.PENDING
+    val syncState: SyncState = SyncState.PENDING,
+
+    /**
+     * Whether this entry's local imagePath has been pushed to the backend.
+     * Independent of [syncState] (which tracks the JSON row) because image
+     * upload is a separate, larger HTTP call and can fail independently.
+     */
+    @ColumnInfo(name = "image_synced")
+    val imageSynced: Boolean = false
 )

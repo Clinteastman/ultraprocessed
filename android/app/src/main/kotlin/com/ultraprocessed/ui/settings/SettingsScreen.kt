@@ -50,6 +50,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ultraprocessed.data.settings.ProviderType
 import com.ultraprocessed.theme.Semantic
 import com.ultraprocessed.theme.Tokens
+import com.ultraprocessed.ui.components.FastingPicker
 import com.ultraprocessed.ui.components.Overline
 
 @Composable
@@ -119,6 +120,19 @@ fun SettingsScreen(
                 onValueChange = vm::updateApiKey,
                 secret = true,
                 helper = "Stored on device, encrypted."
+            )
+
+            Spacer(Modifier.height(Tokens.Space.s7))
+            SectionHeader("Fasting")
+            Text(
+                text = "Drives the home-screen status strip and the dashboard's fasting card. Off by default; toggle Active to enable.",
+                color = Semantic.colors.inkLow,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Spacer(Modifier.height(Tokens.Space.s3))
+            FastingPicker(
+                profile = draft.fasting,
+                onProfileChange = vm::setFasting
             )
 
             Spacer(Modifier.height(Tokens.Space.s7))

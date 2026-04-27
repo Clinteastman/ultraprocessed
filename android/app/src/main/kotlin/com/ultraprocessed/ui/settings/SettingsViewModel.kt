@@ -7,10 +7,14 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import com.ultraprocessed.UltraprocessedApplication
+import com.ultraprocessed.data.entities.FastingProfile
+import com.ultraprocessed.data.entities.ScheduleType
+import com.ultraprocessed.data.repository.FastingRepository
 import com.ultraprocessed.data.settings.ProviderType
 import com.ultraprocessed.data.settings.SecretStore
 import com.ultraprocessed.data.settings.Settings
 import com.ultraprocessed.sync.BackendClient
+import com.ultraprocessed.sync.FastingProfileDto
 import com.ultraprocessed.sync.SyncCoordinator
 import com.ultraprocessed.sync.SyncResult
 import io.ktor.client.HttpClient
@@ -20,17 +24,22 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-/**
- * Draft + saved model: every field edit updates the draft only; Save
- * persists everything to Settings + EncryptedSharedPreferences in one
- * shot. The screen calls [refresh] on every entry so changes made
- * elsewhere (e.g. QR pairing) show up immediately.
- */
+private val DEFAULT_PROFILE = FastingProfile(
+    name = "16:8",
+    scheduleType = ScheduleType.SIXTEEN_EIGHT,
+    eatingWindowStartMinutes = 12 * 60,
+    eatingWindowEndMinutes = 20 * 60,
+    restrictedDaysMask = 0,
+    restrictedKcalTarget = null,
+    active = false
+)
+
 class SettingsViewModel(
     private val settings: Settings,
     private val secrets: SecretStore,
     private val httpClient: HttpClient,
-    private val syncCoordinator: SyncCoordinator
+    private val syncCoordinator: SyncCoordinator,
+    private val fastingRepo: FastingRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsState())
@@ -42,6 +51,7 @@ class SettingsViewModel(
 
     fun refresh() {
         viewModelScope.launch {
+            val fasting = fastingRepo.getActive() ?: DEFAULT_PROFILE
             val values = SettingsValues(
                 provider = settings.provider.first(),
                 baseUrl = settings.providerBaseUrl.first(),
@@ -49,7 +59,8 @@ class SettingsViewModel(
                 apiKey = secrets.providerApiKey.orEmpty(),
                 backendUrl = settings.backendBaseUrl.first().orEmpty(),
                 backendToken = secrets.backendToken.orEmpty(),
-                relayThroughBackend = settings.relayThroughBackend.first()
+                relayThroughBackend = settings.relayThroughBackend.first(),
+                fasting = fasting
             )
             _state.value = _state.value.copy(
                 saved = values,
@@ -77,6 +88,7 @@ class SettingsViewModel(
     fun updateBackendUrl(url: String) = patchDraft { it.copy(backendUrl = url) }
     fun updateBackendToken(token: String) = patchDraft { it.copy(backendToken = token) }
     fun setRelayThroughBackend(value: Boolean) = patchDraft { it.copy(relayThroughBackend = value) }
+    fun setFasting(profile: FastingProfile) = patchDraft { it.copy(fasting = profile) }
 
     private inline fun patchDraft(transform: (SettingsValues) -> SettingsValues) {
         _state.value = _state.value.copy(
@@ -85,7 +97,7 @@ class SettingsViewModel(
         )
     }
 
-    /** Persists the current draft to Settings + SecretStore. */
+    /** Persists the current draft to Settings + SecretStore + Room (fasting). */
     fun save() {
         val draft = _state.value.draft
         _state.value = _state.value.copy(saveStatus = SaveStatus.InFlight)
@@ -97,6 +109,29 @@ class SettingsViewModel(
             settings.setRelayThroughBackend(draft.relayThroughBackend)
             secrets.providerApiKey = draft.apiKey
             secrets.backendToken = draft.backendToken
+
+            // Fasting: keep one active profile per user. Make this one the
+            // (only) active row and deactivate others.
+            val incoming = if (draft.fasting.active) draft.fasting else draft.fasting.copy(active = false)
+            val savedId = fastingRepo.save(incoming)
+            if (incoming.active) fastingRepo.setActive(savedId)
+
+            // Push fasting to backend if configured. Best-effort.
+            if (draft.backendUrl.isNotBlank() && draft.backendToken.isNotBlank()) {
+                val client = BackendClient(draft.backendUrl, draft.backendToken, httpClient)
+                client.putFastingProfile(
+                    FastingProfileDto(
+                        name = incoming.name,
+                        scheduleType = incoming.scheduleType.name,
+                        eatingWindowStartMinutes = incoming.eatingWindowStartMinutes,
+                        eatingWindowEndMinutes = incoming.eatingWindowEndMinutes,
+                        restrictedDaysMask = incoming.restrictedDaysMask,
+                        restrictedKcalTarget = incoming.restrictedKcalTarget,
+                        active = incoming.active
+                    )
+                )
+            }
+
             _state.value = _state.value.copy(
                 saved = draft,
                 saveStatus = SaveStatus.Saved
@@ -104,7 +139,6 @@ class SettingsViewModel(
         }
     }
 
-    /** Manually trigger a sync; surfaces the result on screen. */
     fun syncNow() {
         _state.value = _state.value.copy(syncStatus = SyncStatus.InFlight)
         viewModelScope.launch {
@@ -113,7 +147,6 @@ class SettingsViewModel(
         }
     }
 
-    /** Throws away unsaved edits; reverts the draft to the saved values. */
     fun discard() {
         _state.value = _state.value.copy(
             draft = _state.value.saved,
@@ -121,11 +154,6 @@ class SettingsViewModel(
         )
     }
 
-    /**
-     * Asks the backend for a fresh device token and stashes it. Token
-     * lands in the draft *and* is auto-saved, since the user clearly
-     * wanted that value to apply.
-     */
     fun pair() {
         val url = _state.value.draft.backendUrl
         if (url.isBlank()) {
@@ -165,7 +193,8 @@ class SettingsViewModel(
                     settings = container.settings,
                     secrets = container.secrets,
                     httpClient = container.httpClient,
-                    syncCoordinator = container.syncCoordinator
+                    syncCoordinator = container.syncCoordinator,
+                    fastingRepo = container.fastingRepository
                 )
             }
         }
@@ -179,7 +208,8 @@ data class SettingsValues(
     val apiKey: String = "",
     val backendUrl: String = "",
     val backendToken: String = "",
-    val relayThroughBackend: Boolean = false
+    val relayThroughBackend: Boolean = false,
+    val fasting: FastingProfile = DEFAULT_PROFILE
 )
 
 data class SettingsState(

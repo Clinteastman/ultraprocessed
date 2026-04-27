@@ -33,8 +33,24 @@ interface FoodEntryDao {
     @Query("SELECT COUNT(*) FROM food_entry WHERE sync_state = :state")
     fun observePendingCount(state: SyncState = SyncState.PENDING): Flow<Int>
 
+    @Query(
+        "SELECT * FROM food_entry " +
+        "WHERE image_synced = 0 " +
+        "  AND image_path IS NOT NULL " +
+        "  AND sync_state = :state"
+    )
+    suspend fun pendingImages(state: SyncState = SyncState.SYNCED): List<FoodEntry>
+
     @Query("SELECT * FROM food_entry ORDER BY updated_at DESC LIMIT :limit")
     fun observeRecent(limit: Int = 50): Flow<List<FoodEntry>>
+
+    @Query(
+        "SELECT * FROM food_entry " +
+        "WHERE LOWER(name) LIKE '%' || LOWER(:q) || '%' " +
+        "   OR LOWER(IFNULL(brand, '')) LIKE '%' || LOWER(:q) || '%' " +
+        "ORDER BY updated_at DESC LIMIT :limit"
+    )
+    fun observeSearch(q: String, limit: Int = 30): Flow<List<FoodEntry>>
 
     @Query("DELETE FROM food_entry WHERE client_uuid = :uuid")
     suspend fun deleteByClientUuid(uuid: String)

@@ -20,13 +20,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DateRangePicker
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -40,33 +45,54 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.ultraprocessed.UltraprocessedApplication
 import com.ultraprocessed.data.dao.ConsumptionWithFood
+import com.ultraprocessed.sync.SyncResult
 import com.ultraprocessed.theme.Semantic
 import com.ultraprocessed.theme.Tokens
 import com.ultraprocessed.theme.novaColor
 import com.ultraprocessed.ui.components.DateRangeChips
 import com.ultraprocessed.ui.components.DietScoreCard
+import com.ultraprocessed.ui.components.FastingStatusStrip
 import com.ultraprocessed.ui.components.NovaPill
 import com.ultraprocessed.ui.components.Overline
+import com.ultraprocessed.ui.components.SyncIconState
+import com.ultraprocessed.ui.components.SyncStatusIcon
 import com.ultraprocessed.ui.components.UpfShareCard
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     onScanTap: () -> Unit,
+    onSearchTap: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     val vm: HomeViewModel = viewModel(factory = HomeViewModel.Factory)
     val selected by vm.selected.collectAsState()
     val state by vm.state.collectAsState()
     var editing by remember { mutableStateOf<ConsumptionWithFood?>(null) }
+    var showRangePicker by remember { mutableStateOf(false) }
 
     val agg = state.aggregation
+
+    val context = LocalContext.current
+    val container = remember(context) {
+        (context.applicationContext as UltraprocessedApplication).container
+    }
+    val pendingFoods by container.foodRepository.observePendingCount().collectAsState(initial = 0)
+    val pendingLogs by container.consumptionRepository.observePendingCount().collectAsState(initial = 0)
+    val lastSync by container.syncCoordinator.lastResult.collectAsState()
+    val activeFasting by container.fastingRepository.observeActive().collectAsState(initial = null)
+    val syncIcon = remember(pendingFoods, pendingLogs, lastSync) {
+        deriveSyncIconState(pendingFoods + pendingLogs, lastSync)
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(Semantic.colors.bg)) {
         LazyColumn(
@@ -94,25 +120,50 @@ fun HomeScreen(
                             color = Semantic.colors.inkHigh
                         )
                     }
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(Semantic.colors.surface1)
-                            .clickable(onClick = onOpenSettings),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "Settings",
-                            tint = Semantic.colors.inkHigh
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (syncIcon != SyncIconState.Hidden) {
+                            SyncStatusIcon(
+                                state = syncIcon,
+                                onClick = { container.syncCoordinator.trigger() }
+                            )
+                            Spacer(Modifier.size(Tokens.Space.s2))
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(Semantic.colors.surface1)
+                                .clickable(onClick = onOpenSettings),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = Semantic.colors.inkHigh
+                            )
+                        }
                     }
                 }
             }
 
             item("range") {
-                DateRangeChips(selected = selected, onSelect = vm::selectPreset)
+                DateRangeChips(
+                    selected = selected,
+                    onSelect = { preset ->
+                        if (preset == com.ultraprocessed.ui.components.DateRangePreset.Custom) {
+                            showRangePicker = true
+                        } else {
+                            vm.selectPreset(preset)
+                        }
+                    }
+                )
+            }
+
+            item("fasting") {
+                FastingStatusStrip(
+                    profile = activeFasting,
+                    onTapEdit = onOpenSettings
+                )
             }
 
             item("diet-score") {
@@ -162,23 +213,46 @@ fun HomeScreen(
             }
         }
 
-        // FAB - the primary action: open the scanner.
-        Box(
+        // FAB cluster: camera (primary) + plain-text search (secondary).
+        // Search sits to the left at ~2/3 size for users who forgot to
+        // scan/photo at the time of eating and just want to type a name.
+        Row(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = Tokens.Space.s5, bottom = Tokens.Space.s5)
-                .size(64.dp)
-                .clip(CircleShape)
-                .background(Semantic.colors.accent)
-                .clickable(onClick = onScanTap),
-            contentAlignment = Alignment.Center
+                .padding(end = Tokens.Space.s5, bottom = Tokens.Space.s5),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Tokens.Space.s3)
         ) {
-            Icon(
-                imageVector = Icons.Default.PhotoCamera,
-                contentDescription = "Scan food",
-                tint = Semantic.colors.inkInverse,
-                modifier = Modifier.size(28.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Semantic.colors.surface2)
+                    .clickable(onClick = onSearchTap),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search foods",
+                    tint = Semantic.colors.inkHigh,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(Semantic.colors.accent)
+                    .clickable(onClick = onScanTap),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PhotoCamera,
+                    contentDescription = "Scan food",
+                    tint = Semantic.colors.inkInverse,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
         }
     }
 
@@ -196,7 +270,86 @@ fun HomeScreen(
             }
         )
     }
+
+    if (showRangePicker) {
+        CustomRangeDialog(
+            initialFromMs = state.window.fromMs,
+            initialToMs = state.window.toMs,
+            onDismiss = { showRangePicker = false },
+            onConfirm = { from, to ->
+                vm.selectCustomRange(from, to)
+                showRangePicker = false
+            }
+        )
+    }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CustomRangeDialog(
+    initialFromMs: Long,
+    initialToMs: Long,
+    onDismiss: () -> Unit,
+    onConfirm: (Long, Long) -> Unit
+) {
+    val state = rememberDateRangePickerState(
+        initialSelectedStartDateMillis = initialFromMs,
+        initialSelectedEndDateMillis = initialToMs
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            val from = state.selectedStartDateMillis
+            val to = state.selectedEndDateMillis
+            val enabled = from != null && to != null
+            Box(
+                modifier = Modifier
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(Tokens.Radius.md))
+                    .background(if (enabled) Semantic.colors.accent else Semantic.colors.surface3)
+                    .clickable(enabled = enabled) {
+                        if (from != null && to != null) {
+                            // Push end-of-day so the range is inclusive of the
+                            // selected last date in DateRangeWindow filtering.
+                            onConfirm(from, to + 24L * 60 * 60 * 1000 - 1)
+                        }
+                    }
+                    .padding(horizontal = Tokens.Space.s4),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "Apply",
+                    color = if (enabled) Semantic.colors.inkInverse else Semantic.colors.inkLow,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        },
+        dismissButton = {
+            Box(
+                modifier = Modifier
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(Tokens.Radius.md))
+                    .background(Semantic.colors.surface2)
+                    .clickable(onClick = onDismiss)
+                    .padding(horizontal = Tokens.Space.s4),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("Cancel", color = Semantic.colors.inkHigh)
+            }
+        }
+    ) {
+        DateRangePicker(state = state)
+    }
+}
+
+private fun deriveSyncIconState(pendingCount: Int, lastResult: SyncResult): SyncIconState =
+    when {
+        lastResult is SyncResult.NotConfigured -> SyncIconState.Hidden
+        lastResult is SyncResult.BackendUnreachable -> SyncIconState.Off
+        lastResult is SyncResult.Failed -> SyncIconState.Off
+        pendingCount > 0 -> SyncIconState.Pending
+        else -> SyncIconState.Done
+    }
 
 @Composable
 private fun CalorieSummary(totalKcal: Double, mealCount: Int) {
