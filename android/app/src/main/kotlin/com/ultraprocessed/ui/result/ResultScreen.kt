@@ -31,7 +31,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -41,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ultraprocessed.analyzer.FoodAlternative
 import com.ultraprocessed.analyzer.FoodAnalysis
+import kotlinx.coroutines.launch
 import com.ultraprocessed.theme.Semantic
 import com.ultraprocessed.theme.Tokens
 import com.ultraprocessed.theme.novaColor
@@ -68,20 +76,29 @@ fun ResultScreen(
     }
 
     var percentage by remember { mutableStateOf(100f) }
-    // Selected index: -1 = primary, 0..n-1 = alternative index.
+    // Selected index: -1 = primary, 0..n-1 = alternative index, -2 = manual override.
     var selectedAltIndex by remember { mutableIntStateOf(-1) }
+    var manualOverride by remember { mutableStateOf<FoodAnalysis?>(null) }
+    var manualEntryActive by remember { mutableStateOf(false) }
+    var manualText by remember { mutableStateOf("") }
+    var manualLoading by remember { mutableStateOf(false) }
+    var manualError by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+
     val analysis: FoodAnalysis = current.analysis.let { primary ->
-        if (selectedAltIndex < 0 || selectedAltIndex >= primary.alternatives.size) {
-            primary
-        } else {
-            val alt = primary.alternatives[selectedAltIndex]
-            primary.copy(
-                name = alt.name,
-                novaClass = alt.novaClass,
-                novaRationale = "You picked ${alt.name} as the actual food.",
-                kcalPer100g = alt.kcalPer100g ?: primary.kcalPer100g,
-                kcalPerUnit = alt.kcalPerUnit ?: primary.kcalPerUnit
-            )
+        when {
+            selectedAltIndex == -2 && manualOverride != null -> manualOverride!!
+            selectedAltIndex < 0 || selectedAltIndex >= primary.alternatives.size -> primary
+            else -> {
+                val alt = primary.alternatives[selectedAltIndex]
+                primary.copy(
+                    name = alt.name,
+                    novaClass = alt.novaClass,
+                    novaRationale = "You picked ${alt.name} as the actual food.",
+                    kcalPer100g = alt.kcalPer100g ?: primary.kcalPer100g,
+                    kcalPerUnit = alt.kcalPerUnit ?: primary.kcalPerUnit
+                )
+            }
         }
     }
 
@@ -135,13 +152,47 @@ fun ResultScreen(
             style = MaterialTheme.typography.bodyLarge
         )
 
-        if (current.analysis.alternatives.isNotEmpty()) {
-            Spacer(Modifier.height(Tokens.Space.s5))
+        Spacer(Modifier.height(Tokens.Space.s5))
+        if (manualEntryActive) {
+            ManualEntry(
+                text = manualText,
+                onTextChange = { manualText = it; manualError = null },
+                loading = manualLoading,
+                error = manualError,
+                onSubmit = submit@{
+                    if (manualText.isBlank() || manualLoading) return@submit
+                    manualLoading = true
+                    manualError = null
+                    val query = manualText
+                    coroutineScope.launch {
+                        resultVm.classify(query).fold(
+                            onSuccess = { result ->
+                                manualOverride = result
+                                selectedAltIndex = -2
+                                manualEntryActive = false
+                                manualText = ""
+                            },
+                            onFailure = { err ->
+                                manualError = err.message ?: "Lookup failed."
+                            }
+                        )
+                        manualLoading = false
+                    }
+                },
+                onCancel = {
+                    manualEntryActive = false
+                    manualText = ""
+                    manualError = null
+                }
+            )
+        } else {
             AlternativesPicker(
                 primaryName = current.analysis.name,
                 alternatives = current.analysis.alternatives,
+                manualOverride = manualOverride,
                 selectedIndex = selectedAltIndex,
-                onSelect = { idx -> selectedAltIndex = idx }
+                onSelect = { idx -> selectedAltIndex = idx },
+                onAddOther = { manualEntryActive = true }
             )
         }
 
@@ -280,11 +331,13 @@ private fun novaLabel(novaClass: Int): String = when (novaClass) {
 private fun AlternativesPicker(
     primaryName: String,
     alternatives: List<FoodAlternative>,
+    manualOverride: FoodAnalysis?,
     selectedIndex: Int,
-    onSelect: (Int) -> Unit
+    onSelect: (Int) -> Unit,
+    onAddOther: () -> Unit
 ) {
     Column {
-        Overline(text = "Not right? Pick another.")
+        Overline(text = "Not right?  Pick another or type your own.")
         Spacer(Modifier.height(Tokens.Space.s2))
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
@@ -293,7 +346,7 @@ private fun AlternativesPicker(
         ) {
             FoodChip(
                 label = primaryName,
-                selected = selectedIndex < 0,
+                selected = selectedIndex == -1,
                 onClick = { onSelect(-1) }
             )
             alternatives.forEachIndexed { idx, alt ->
@@ -302,6 +355,101 @@ private fun AlternativesPicker(
                     selected = selectedIndex == idx,
                     onClick = { onSelect(idx) }
                 )
+            }
+            if (manualOverride != null) {
+                FoodChip(
+                    label = manualOverride.name,
+                    selected = selectedIndex == -2,
+                    onClick = { onSelect(-2) }
+                )
+            }
+            FoodChip(
+                label = "+ Other",
+                selected = false,
+                onClick = onAddOther
+            )
+        }
+    }
+}
+
+@Composable
+private fun ManualEntry(
+    text: String,
+    onTextChange: (String) -> Unit,
+    loading: Boolean,
+    error: String?,
+    onSubmit: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Column {
+        Overline(text = "What is it?")
+        Spacer(Modifier.height(Tokens.Space.s2))
+        OutlinedTextField(
+            value = text,
+            onValueChange = onTextChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            enabled = !loading,
+            placeholder = { Text("e.g. mango, tesco hummus, latte", color = Semantic.colors.inkLow) },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { onSubmit() }),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = Semantic.colors.surface1,
+                unfocusedContainerColor = Semantic.colors.surface1,
+                disabledContainerColor = Semantic.colors.surface1,
+                focusedTextColor = Semantic.colors.inkHigh,
+                unfocusedTextColor = Semantic.colors.inkHigh,
+                focusedIndicatorColor = Semantic.colors.accent,
+                unfocusedIndicatorColor = Semantic.colors.surface3,
+                cursorColor = Semantic.colors.accent
+            )
+        )
+        if (error != null) {
+            Spacer(Modifier.height(Tokens.Space.s2))
+            Text(
+                text = error,
+                color = Semantic.colors.error,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+        Spacer(Modifier.height(Tokens.Space.s3))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Tokens.Space.s3)
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(Tokens.Radius.md))
+                    .background(Semantic.colors.surface2)
+                    .clickable(enabled = !loading, onClick = onCancel),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("Cancel", color = Semantic.colors.inkHigh, fontWeight = FontWeight.Medium)
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(Tokens.Radius.md))
+                    .background(if (text.isBlank() || loading) Semantic.colors.surface3 else Semantic.colors.accent)
+                    .clickable(enabled = !loading && text.isNotBlank(), onClick = onSubmit),
+                contentAlignment = Alignment.Center
+            ) {
+                if (loading) {
+                    CircularProgressIndicator(
+                        color = Semantic.colors.inkInverse,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(20.dp)
+                    )
+                } else {
+                    Text(
+                        "Look it up",
+                        color = if (text.isBlank()) Semantic.colors.inkLow else Semantic.colors.inkInverse,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
     }

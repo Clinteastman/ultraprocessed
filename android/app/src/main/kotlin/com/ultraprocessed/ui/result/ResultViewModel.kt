@@ -34,6 +34,18 @@ class ResultViewModel(
     private val foodRepo: FoodRepository = container.foodRepository
     private val consumptionRepo: ConsumptionRepository = container.consumptionRepository
 
+    /**
+     * Classify a free-text food description (e.g. "mango", "tesco hummus")
+     * via the configured analyzer. Used by the manual-entry chip on the
+     * result screen when the model's primary + alternatives are all wrong.
+     */
+    suspend fun classify(text: String): Result<com.ultraprocessed.analyzer.FoodAnalysis> {
+        val analyzer = runCatching { container.analyzerFactory.current() }.getOrElse {
+            return Result.failure(it)
+        }
+        return analyzer.analyzeText(text)
+    }
+
     fun logConsumption(
         pending: PendingResult,
         percentageEaten: Int,
