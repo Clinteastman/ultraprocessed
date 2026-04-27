@@ -31,7 +31,8 @@ Bring your own key in Settings, or run the backend with its own key and let the 
 - [Architecture overview](docs/architecture.md)
 - [Design system](docs/design.md)
 - [Motion + haptics spec](docs/motion.md)
-- [Plan / build order](.) - tracked outside the repo for now
+- [Deploy to a Docker host](docs/deploy.md) - end-to-end runbook for putting the backend on a homelab Docker box behind a Cloudflare tunnel
+- [Phase 1 verification](docs/phase1-verification.md) and [Phase 2 verification](docs/phase2-verification.md)
 
 ## License
 
