@@ -76,6 +76,9 @@
         min: 1,
         max: 4,
         interval: 1,
+        // Inverted: NOVA 1 at top, NOVA 4 at bottom, so the line going
+        // up reads as "diet is improving" rather than the other way round.
+        inverse: true,
         splitLine: { lineStyle: { color: "#1C1C1F" } },
         axisLabel: { color: "#6E6C66", fontSize: 11 }
       },

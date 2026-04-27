@@ -354,7 +354,7 @@
           <p class="text-sm text-ink-mid mt-1">
             Calorie-weighted average per
             {range.to.getTime() - range.from.getTime() < 1.5 * 24 * 60 * 60 * 1000 ? "hour" : "day"}.
-            Lower is better.
+            Higher is better.
           </p>
         </div>
         {#if aggregate.nova_average != null}
