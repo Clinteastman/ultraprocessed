@@ -1,0 +1,32 @@
+name: ultraprocessed
+
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    image: ultraprocessed/backend:dev
+    container_name: ultraprocessed-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ULTRAPROCESSED_DATABASE_URL: ${ULTRAPROCESSED_DATABASE_URL:-sqlite:////app/data/ultraprocessed.db}
+      ULTRAPROCESSED_TOKEN_SECRET: ${ULTRAPROCESSED_TOKEN_SECRET:?Set ULTRAPROCESSED_TOKEN_SECRET in .env}
+    ports:
+      - "${ULTRAPROCESSED_PORT:-8000}:8000"
+    volumes:
+      - backend-data:/app/data
+      # Drop a built SvelteKit static export here (dashboard/build) and the
+      # backend will serve it at /. Phase 2/3 task wires the build step.
+      # - ../dashboard/build:/app/dashboard:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  backend-data:
+    name: ultraprocessed-backend-data
