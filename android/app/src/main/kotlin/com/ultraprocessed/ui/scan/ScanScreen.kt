@@ -246,7 +246,9 @@ private fun BoxScope.TopChrome(
 
 private fun deriveSyncIconState(pendingCount: Int, lastResult: SyncResult): SyncIconState =
     when {
-        lastResult is SyncResult.NotConfigured -> SyncIconState.Off
+        // Standalone mode: no backend configured, hide the icon entirely so
+        // it never looks like an error state.
+        lastResult is SyncResult.NotConfigured -> SyncIconState.Hidden
         lastResult is SyncResult.BackendUnreachable -> SyncIconState.Off
         lastResult is SyncResult.Failed -> SyncIconState.Off
         pendingCount > 0 -> SyncIconState.Pending

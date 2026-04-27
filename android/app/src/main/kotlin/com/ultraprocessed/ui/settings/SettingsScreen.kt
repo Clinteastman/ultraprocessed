@@ -23,6 +23,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -34,6 +36,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -86,8 +91,21 @@ fun SettingsScreen(
                 )
             }
 
+            Spacer(Modifier.height(Tokens.Space.s4))
+            Text(
+                text = "The app works fully on this device. Set your LLM provider below to enable photo scanning. Pairing a homelab backend is optional.",
+                color = Semantic.colors.inkMid,
+                style = MaterialTheme.typography.bodyMedium
+            )
+
             Spacer(Modifier.height(Tokens.Space.s6))
             SectionHeader("Provider")
+            Text(
+                text = "Used for analysing photographed and manually entered foods. Barcode scans don't need it.",
+                color = Semantic.colors.inkLow,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Spacer(Modifier.height(Tokens.Space.s3))
             ProviderSwitch(selected = draft.provider, onChange = vm::setProvider)
 
             Spacer(Modifier.height(Tokens.Space.s4))
@@ -104,58 +122,88 @@ fun SettingsScreen(
             )
 
             Spacer(Modifier.height(Tokens.Space.s7))
-            SectionHeader("Backend (optional)")
-            Text(
-                text = "Easiest: open your dashboard's Settings page on a laptop, " +
-                    "tap \"Pair a device\", then scan the QR with the button below.",
-                color = Semantic.colors.inkMid,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Spacer(Modifier.height(Tokens.Space.s3))
-            ScanPairingQrButton(onClick = onScanPairingQr)
-            Spacer(Modifier.height(Tokens.Space.s5))
-            Overline(text = "Or set manually")
-            Spacer(Modifier.height(Tokens.Space.s2))
-            Field(label = "Backend URL", value = draft.backendUrl, onValueChange = vm::updateBackendUrl)
-            Spacer(Modifier.height(Tokens.Space.s3))
-            Field(
-                label = "Device token",
-                value = draft.backendToken,
-                onValueChange = vm::updateBackendToken,
-                secret = true
-            )
-            Spacer(Modifier.height(Tokens.Space.s3))
-            PairBackendButton(
-                status = state.pairStatus,
-                enabled = draft.backendUrl.isNotBlank(),
-                onClick = vm::pair
-            )
-            Spacer(Modifier.height(Tokens.Space.s4))
+
+            // Backend / homelab integration: optional, collapsed by default.
+            // Auto-expands when the user already has a backend configured so
+            // they can manage it without having to find it.
+            val backendConfigured = draft.backendUrl.isNotBlank() || draft.backendToken.isNotBlank()
+            var backendExpanded by remember { mutableStateOf(backendConfigured) }
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { backendExpanded = !backendExpanded },
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
+                    Overline(text = "Connect a homelab backend")
+                    Spacer(Modifier.height(Tokens.Space.s1))
                     Text(
-                        text = "Relay analyses through backend",
-                        color = Semantic.colors.inkHigh,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                    Text(
-                        text = "When enabled, the phone never sees a provider key.",
+                        text = "Optional. Sync your data to a self-hosted server for a web dashboard, Home Assistant integration, or multi-device use.",
                         color = Semantic.colors.inkMid,
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
-                Switch(
-                    checked = draft.relayThroughBackend,
-                    onCheckedChange = vm::setRelayThroughBackend,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Semantic.colors.accent,
-                        checkedTrackColor = Semantic.colors.accent.copy(alpha = 0.3f)
-                    )
+                Spacer(Modifier.size(Tokens.Space.s2))
+                Icon(
+                    imageVector = if (backendExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (backendExpanded) "Collapse" else "Expand",
+                    tint = Semantic.colors.inkMid
                 )
+            }
+            AnimatedVisibility(visible = backendExpanded) {
+                Column(modifier = Modifier.padding(top = Tokens.Space.s4)) {
+                    Text(
+                        text = "Easiest: open your dashboard's Settings page on a laptop, tap \"Pair a device\", then scan the QR with the button below.",
+                        color = Semantic.colors.inkMid,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(Modifier.height(Tokens.Space.s3))
+                    ScanPairingQrButton(onClick = onScanPairingQr)
+                    Spacer(Modifier.height(Tokens.Space.s5))
+                    Overline(text = "Or set manually")
+                    Spacer(Modifier.height(Tokens.Space.s2))
+                    Field(label = "Backend URL", value = draft.backendUrl, onValueChange = vm::updateBackendUrl)
+                    Spacer(Modifier.height(Tokens.Space.s3))
+                    Field(
+                        label = "Device token",
+                        value = draft.backendToken,
+                        onValueChange = vm::updateBackendToken,
+                        secret = true
+                    )
+                    Spacer(Modifier.height(Tokens.Space.s3))
+                    PairBackendButton(
+                        status = state.pairStatus,
+                        enabled = draft.backendUrl.isNotBlank(),
+                        onClick = vm::pair
+                    )
+                    Spacer(Modifier.height(Tokens.Space.s4))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Relay analyses through backend",
+                                color = Semantic.colors.inkHigh,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = "When enabled, the phone never sees a provider key.",
+                                color = Semantic.colors.inkMid,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        Switch(
+                            checked = draft.relayThroughBackend,
+                            onCheckedChange = vm::setRelayThroughBackend,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Semantic.colors.accent,
+                                checkedTrackColor = Semantic.colors.accent.copy(alpha = 0.3f)
+                            )
+                        )
+                    }
+                }
             }
 
             if (state.saveStatus is SaveStatus.Saved && !state.dirty) {

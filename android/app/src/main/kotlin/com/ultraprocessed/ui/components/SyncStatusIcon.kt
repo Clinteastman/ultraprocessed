@@ -35,7 +35,7 @@ import androidx.compose.ui.unit.dp
  *
  * Tap to manually re-sync.
  */
-enum class SyncIconState { Done, Pending, Syncing, Off }
+enum class SyncIconState { Done, Pending, Syncing, Off, Hidden }
 
 @Composable
 fun SyncStatusIcon(
@@ -43,11 +43,13 @@ fun SyncStatusIcon(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    if (state == SyncIconState.Hidden) return
     val (icon, tint) = when (state) {
         SyncIconState.Done -> Icons.Default.CloudDone to Color.White
         SyncIconState.Pending -> Icons.Default.CloudUpload to Color(0xFFE8A04A)
         SyncIconState.Syncing -> Icons.Default.Sync to Color.White
         SyncIconState.Off -> Icons.Default.CloudOff to Color.White.copy(alpha = 0.6f)
+        SyncIconState.Hidden -> Icons.Default.CloudDone to Color.Transparent
     }
 
     val transition = rememberInfiniteTransition(label = "sync-spin")
