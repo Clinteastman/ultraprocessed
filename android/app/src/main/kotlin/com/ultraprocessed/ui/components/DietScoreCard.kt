@@ -90,7 +90,7 @@ fun DietScoreCard(
 
         Spacer(Modifier.height(Tokens.Space.s2))
         Text(
-            text = "Weighted by calories across $mealCount meal${if (mealCount == 1) "" else "s"}.",
+            text = "Weighted by calories across $mealCount item${if (mealCount == 1) "" else "s"}.",
             color = Semantic.colors.inkLow,
             style = MaterialTheme.typography.bodySmall
         )

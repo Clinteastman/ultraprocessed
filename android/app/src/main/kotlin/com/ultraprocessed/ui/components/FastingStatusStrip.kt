@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -78,34 +80,58 @@ fun FastingStatusStrip(
     }
     val tintAlpha = if (Semantic.colors.isDark) 0.16f else 0.14f
 
-    Row(
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(Tokens.Radius.md))
             .background(accent.copy(alpha = tintAlpha))
             .clickable(onClick = onTapEdit)
-            .padding(Tokens.Space.s4),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(Tokens.Space.s4)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(accent)
+            )
+            Spacer(Modifier.size(Tokens.Space.s3))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = state.title,
+                    color = accent,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = state.sub,
+                    color = Semantic.colors.inkMid,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+        if (state.progress != null) {
+            Spacer(Modifier.size(Tokens.Space.s3))
+            FastingProgressBar(progress = state.progress, accent = accent)
+        }
+    }
+}
+
+@Composable
+private fun FastingProgressBar(progress: Float, accent: Color) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(6.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .background(accent.copy(alpha = 0.20f))
     ) {
         Box(
             modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
+                .fillMaxHeight()
+                .fillMaxWidth(fraction = progress.coerceIn(0f, 1f))
+                .clip(RoundedCornerShape(3.dp))
                 .background(accent)
         )
-        Spacer(Modifier.size(Tokens.Space.s3))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = state.title,
-                color = accent,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium
-            )
-            Text(
-                text = state.sub,
-                color = Semantic.colors.inkMid,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
     }
 }

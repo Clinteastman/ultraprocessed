@@ -7,4 +7,6 @@ object Routes {
     const val Result = "result"
     const val Settings = "settings"
     const val PairingScan = "pairing-scan"
+    const val Help = "help"
+    const val Places = "places"
 }

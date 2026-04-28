@@ -25,6 +25,20 @@
       <a href="/" class="font-display text-2xl tracking-tight text-ink-hi hover:text-ink-hi">
         Ultraprocessed
       </a>
+      <div class="flex items-center gap-1">
+        <a
+          href="/help"
+          title="How this app works"
+          aria-label="Help"
+          class="rounded-sm p-2 text-ink-mid hover:text-ink-hi hover:bg-surface-1 transition-colors"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+        </a>
       <a
         href="/settings"
         title="Settings"
@@ -37,6 +51,7 @@
           <circle cx="12" cy="12" r="3"/>
         </svg>
       </a>
+      </div>
     </div>
   </header>
 

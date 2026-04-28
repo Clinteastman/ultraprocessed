@@ -339,7 +339,7 @@
           </div>
         </div>
         <p class="text-sm text-ink-mid">
-          {aggregate.meal_count} meal{aggregate.meal_count === 1 ? "" : "s"}
+          {aggregate.meal_count} item{aggregate.meal_count === 1 ? "" : "s"}
         </p>
       </div>
       <div class="mt-5">

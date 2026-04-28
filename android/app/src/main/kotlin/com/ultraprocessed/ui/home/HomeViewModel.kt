@@ -36,6 +36,9 @@ class HomeViewModel(
     private val _customRange = MutableStateFlow<Pair<Long, Long>?>(null)
     val customRange: StateFlow<Pair<Long, Long>?> = _customRange.asStateFlow()
 
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
     /**
      * The recent ConsumptionLog list. We over-fetch (last 1000 entries) so
      * a single Flow can drive every preset's aggregate, with filtering
@@ -116,6 +119,22 @@ class HomeViewModel(
         viewModelScope.launch {
             container.consumptionRepository.delete(item.log.clientUuid)
             container.syncCoordinator.trigger()
+        }
+    }
+
+    /**
+     * Pull-to-refresh entry point. Runs a full push+pull sync and flips
+     * [isRefreshing] for the duration so the indicator stays on screen.
+     */
+    fun refresh() {
+        if (_isRefreshing.value) return
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            try {
+                runCatching { container.syncCoordinator.syncOnce() }
+            } finally {
+                _isRefreshing.value = false
+            }
         }
     }
 

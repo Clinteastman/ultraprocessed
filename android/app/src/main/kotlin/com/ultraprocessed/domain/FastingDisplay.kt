@@ -17,7 +17,15 @@ object FastingDisplay {
     data class State(
         val title: String,
         val sub: String,
-        val mood: Mood
+        val mood: Mood,
+        /**
+         * Fraction of the current phase elapsed (0f..1f). For TRE, that's
+         * the eating window or fasting interval; for weekly schedules, it's
+         * the day-so-far on a restricted day, or distance to the next
+         * restricted day on a normal day. Null when not meaningful (e.g.
+         * a profile is set but has no restricted days).
+         */
+        val progress: Float?
     )
 
     /**
@@ -52,10 +60,12 @@ object FastingDisplay {
                 set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
                 add(Calendar.MINUTE, end)
             }
+            val windowSize = (end - start).coerceAtLeast(1)
             State(
                 title = "Eating window open",
                 sub = "Closes at ${timeOf(end)} · ${diffParts(close.timeInMillis, now.timeInMillis)} left",
-                mood = Mood.Eating
+                mood = Mood.Eating,
+                progress = ((minutesNow - start).toFloat() / windowSize).coerceIn(0f, 1f)
             )
         } else {
             val nextOpen = (now.clone() as Calendar).apply {
@@ -64,10 +74,14 @@ object FastingDisplay {
                 add(Calendar.MINUTE, start)
                 if (minutesNow > end) add(Calendar.DAY_OF_YEAR, 1)
             }
+            // Fasting duration = minutes outside the eating window.
+            val fastSize = (1440 - (end - start)).coerceAtLeast(1)
+            val elapsed = if (minutesNow > end) minutesNow - end else (1440 - end) + minutesNow
             State(
                 title = "Fasting",
                 sub = "Eat next at ${timeOf(start)} · ${diffParts(nextOpen.timeInMillis, now.timeInMillis)} to go",
-                mood = Mood.Fasting
+                mood = Mood.Fasting,
+                progress = (elapsed.toFloat() / fastSize).coerceIn(0f, 1f)
             )
         }
     }
@@ -75,29 +89,54 @@ object FastingDisplay {
     private fun weekly(profile: FastingProfile, now: Calendar): State {
         val mask = profile.restrictedDaysMask
         if (mask == 0) {
-            return State("Fasting plan active", "No restricted days configured.", Mood.None)
+            return State("Fasting plan active", "No restricted days configured.", Mood.None, progress = null)
         }
         val todayBit = 1 shl dayMon0(now)
         val todayRestricted = (mask and todayBit) != 0
         if (todayRestricted) {
-            val cap = profile.restrictedKcalTarget ?: 500
+            val cap = profile.restrictedKcalTarget
+            val title = when {
+                cap == 0 -> "Full fast · water only"
+                cap != null -> "Restricted day · $cap kcal cap"
+                else -> "Restricted day"
+            }
             val reset = (now.clone() as Calendar).apply {
                 set(Calendar.HOUR_OF_DAY, 23); set(Calendar.MINUTE, 59)
                 set(Calendar.SECOND, 59); set(Calendar.MILLISECOND, 999)
             }
+            val minutesNow = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
             return State(
-                title = "Restricted day · $cap kcal cap",
+                title = title,
                 sub = "Resets at midnight · ${diffParts(reset.timeInMillis, now.timeInMillis)} to go",
-                mood = Mood.Restricted
+                mood = Mood.Restricted,
+                progress = (minutesNow.toFloat() / 1440f).coerceIn(0f, 1f)
             )
         }
+        // Non-restricted day. If the user has set a daily eating window
+        // for this weekly schedule, fall through to TRE-style display
+        // (clearer "eat at 12:00, X hours to go") rather than a vague
+        // "next restricted day in 4 days".
+        val hasEatingWindow = profile.eatingWindowStartMinutes > 0 ||
+            profile.eatingWindowEndMinutes < 1440
+        if (hasEatingWindow) return tre(profile, now)
+
         val next = nextRestrictedDay(mask, now)
-        if (next == null) return State("Fasting plan active", "No restricted days configured.", Mood.None)
+        if (next == null) return State("Fasting plan active", "No restricted days configured.", Mood.None, progress = null)
         val dayLabel = next.getDisplayName(Calendar.DAY_OF_WEEK, Calendar.LONG, java.util.Locale.getDefault()) ?: ""
+        // Anchor "0%" at midnight starting today, "100%" at the start of the
+        // next restricted day. Lets the user see how soon the next restricted
+        // day is approaching.
+        val todayMidnight = (now.clone() as Calendar).apply {
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }
+        val total = (next.timeInMillis - todayMidnight.timeInMillis).coerceAtLeast(1L)
+        val elapsed = (now.timeInMillis - todayMidnight.timeInMillis).coerceAtLeast(0L)
         return State(
             title = "Normal eating today",
             sub = "Next restricted day: $dayLabel · ${diffParts(next.timeInMillis, now.timeInMillis)}",
-            mood = Mood.Normal
+            mood = Mood.Normal,
+            progress = (elapsed.toFloat() / total.toFloat()).coerceIn(0f, 1f)
         )
     }
 

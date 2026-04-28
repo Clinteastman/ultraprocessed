@@ -151,6 +151,13 @@
     onChange();
   }
 
+  function setFullFast(checked: boolean) {
+    // 0 = full fast (water only). Switch back to a sensible default kcal
+    // cap when the toggle is turned off, rather than clearing it entirely.
+    value = { ...value, restricted_kcal_target: checked ? 0 : 500 };
+    onChange();
+  }
+
   function timeOf(minutes: number): string {
     const h = Math.floor(minutes / 60).toString().padStart(2, "0");
     const m = (minutes % 60).toString().padStart(2, "0");
@@ -222,19 +229,63 @@
         Tap to toggle. Back-to-back days (e.g. Mon + Tue) are slightly easier on insulin sensitivity than spaced ones in the recent literature, with similar adherence.
       </p>
     </div>
+
     <label class="flex items-center gap-2">
-      <span class="text-sm text-ink-mid w-40">Restricted-day kcal cap</span>
       <input
-        type="number"
-        min="0"
-        step="50"
-        value={value.restricted_kcal_target ?? ""}
-        oninput={(e) => setRestrictedKcal(e.currentTarget.value)}
-        class="bg-surface-2 text-ink-hi text-sm rounded-sm px-2 py-1 border border-surface-3 w-24"
-        placeholder="500"
+        type="checkbox"
+        checked={value.restricted_kcal_target === 0}
+        onchange={(e) => setFullFast(e.currentTarget.checked)}
+        class="accent-accent"
       />
-      <span class="text-sm text-ink-lo">kcal</span>
+      <span class="text-sm text-ink-mid">
+        Full fast (no calories) on restricted days. Overrides the kcal cap.
+      </span>
     </label>
+
+    {#if value.restricted_kcal_target !== 0}
+      <label class="flex items-center gap-2">
+        <span class="text-sm text-ink-mid w-40">Restricted-day kcal cap</span>
+        <input
+          type="number"
+          min="0"
+          step="50"
+          value={value.restricted_kcal_target ?? ""}
+          oninput={(e) => setRestrictedKcal(e.currentTarget.value)}
+          class="bg-surface-2 text-ink-hi text-sm rounded-sm px-2 py-1 border border-surface-3 w-24"
+          placeholder="500"
+        />
+        <span class="text-sm text-ink-lo">kcal</span>
+      </label>
+    {/if}
+
+    <div>
+      <p class="text-xs uppercase tracking-wider text-ink-mid mb-2">
+        Daily eating window for normal (non-restricted) days
+      </p>
+      <p class="text-xs text-ink-lo mb-2">
+        Set both edges to 00:00-23:59 to skip and just eat normally.
+      </p>
+      <div class="flex flex-wrap items-center gap-4">
+        <label class="flex items-center gap-2">
+          <span class="text-sm text-ink-mid">Eat from</span>
+          <input
+            type="time"
+            value={timeOf(value.eating_window_start_minutes)}
+            onchange={(e) => setEdge("start", e.currentTarget.value)}
+            class="bg-surface-2 text-ink-hi text-sm rounded-sm px-2 py-1 border border-surface-3"
+          />
+        </label>
+        <label class="flex items-center gap-2">
+          <span class="text-sm text-ink-mid">to</span>
+          <input
+            type="time"
+            value={timeOf(value.eating_window_end_minutes)}
+            onchange={(e) => setEdge("end", e.currentTarget.value)}
+            class="bg-surface-2 text-ink-hi text-sm rounded-sm px-2 py-1 border border-surface-3"
+          />
+        </label>
+      </div>
+    </div>
   {/if}
 
   <label class="flex items-center gap-2">

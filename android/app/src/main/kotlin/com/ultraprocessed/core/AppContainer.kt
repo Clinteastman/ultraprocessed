@@ -21,6 +21,8 @@ import kotlinx.coroutines.SupervisorJob
  */
 class AppContainer(applicationContext: Context) {
 
+    val appContext: Context = applicationContext.applicationContext
+
     val applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val httpClient: HttpClient by lazy { Http.create() }
@@ -48,12 +50,14 @@ class AppContainer(applicationContext: Context) {
 
     val syncCoordinator: com.ultraprocessed.sync.SyncCoordinator by lazy {
         com.ultraprocessed.sync.SyncCoordinator(
+            appContext = appContext,
             settings = settings,
             secrets = secrets,
             httpClient = httpClient,
             database = database,
             foodRepository = foodRepository,
             consumptionRepository = consumptionRepository,
+            fastingRepository = fastingRepository,
             scope = applicationScope
         )
     }

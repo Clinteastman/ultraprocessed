@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.AP
 import com.ultraprocessed.UltraprocessedApplication
 import com.ultraprocessed.data.entities.FastingProfile
 import com.ultraprocessed.data.entities.ScheduleType
+import com.ultraprocessed.data.repository.ConsumptionRepository
 import com.ultraprocessed.data.repository.FastingRepository
 import com.ultraprocessed.data.settings.ProviderType
 import com.ultraprocessed.data.settings.SecretStore
@@ -39,7 +40,8 @@ class SettingsViewModel(
     private val secrets: SecretStore,
     private val httpClient: HttpClient,
     private val syncCoordinator: SyncCoordinator,
-    private val fastingRepo: FastingRepository
+    private val fastingRepo: FastingRepository,
+    private val consumptionRepo: ConsumptionRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsState())
@@ -60,13 +62,17 @@ class SettingsViewModel(
                 backendUrl = settings.backendBaseUrl.first().orEmpty(),
                 backendToken = secrets.backendToken.orEmpty(),
                 relayThroughBackend = settings.relayThroughBackend.first(),
-                fasting = fasting
+                fasting = fasting,
+                homeLabel = settings.homeLabel.first().orEmpty(),
+                homeLat = settings.homeLat.first()?.toString().orEmpty(),
+                homeLng = settings.homeLng.first()?.toString().orEmpty()
             )
             _state.value = _state.value.copy(
                 saved = values,
                 draft = values,
                 saveStatus = SaveStatus.Idle,
-                pairStatus = PairStatus.Idle
+                pairStatus = PairStatus.Idle,
+                backfillStatus = BackfillStatus.Idle
             )
         }
     }
@@ -89,6 +95,63 @@ class SettingsViewModel(
     fun updateBackendToken(token: String) = patchDraft { it.copy(backendToken = token) }
     fun setRelayThroughBackend(value: Boolean) = patchDraft { it.copy(relayThroughBackend = value) }
     fun setFasting(profile: FastingProfile) = patchDraft { it.copy(fasting = profile) }
+    fun updateHomeLabel(v: String) = patchDraft { it.copy(homeLabel = v) }
+    fun updateHomeLat(v: String) = patchDraft { it.copy(homeLat = v) }
+    fun updateHomeLng(v: String) = patchDraft { it.copy(homeLng = v) }
+
+    /**
+     * Tags every consumption log that has no location yet with the saved
+     * Home coordinates + label, and triggers a sync so the backend gets
+     * updated. Uses the *saved* Home (not the in-flight draft) so the
+     * user has to Save first and is sure of what they're applying.
+     */
+    fun backfillUnlocatedAsHome() {
+        val saved = _state.value.saved
+        val lat = saved.homeLat.toDoubleOrNull()
+        val lng = saved.homeLng.toDoubleOrNull()
+        val label = saved.homeLabel.ifBlank { "Home" }
+        if (lat == null || lng == null) {
+            _state.value = _state.value.copy(
+                backfillStatus = BackfillStatus.Failed("Save a Home lat + lng first.")
+            )
+            return
+        }
+        _state.value = _state.value.copy(backfillStatus = BackfillStatus.InFlight)
+        viewModelScope.launch {
+            val updated = consumptionRepo.backfillMissingLocation(lat, lng, label)
+            syncCoordinator.trigger()
+            _state.value = _state.value.copy(
+                backfillStatus = BackfillStatus.Done(updated)
+            )
+        }
+    }
+
+    /**
+     * Re-applies the saved Home coords to every existing log already tagged
+     * with the Home label. Used when the saved coords were initially wrong
+     * (e.g. wrong sign on longitude) and the past entries are now showing
+     * up in the wrong place on the map.
+     */
+    fun retagHomeItems() {
+        val saved = _state.value.saved
+        val lat = saved.homeLat.toDoubleOrNull()
+        val lng = saved.homeLng.toDoubleOrNull()
+        val label = saved.homeLabel.ifBlank { "Home" }
+        if (lat == null || lng == null) {
+            _state.value = _state.value.copy(
+                retagStatus = BackfillStatus.Failed("Save a Home lat + lng first.")
+            )
+            return
+        }
+        _state.value = _state.value.copy(retagStatus = BackfillStatus.InFlight)
+        viewModelScope.launch {
+            val updated = consumptionRepo.retagLocation(lat, lng, label)
+            syncCoordinator.trigger()
+            _state.value = _state.value.copy(
+                retagStatus = BackfillStatus.Done(updated)
+            )
+        }
+    }
 
     private inline fun patchDraft(transform: (SettingsValues) -> SettingsValues) {
         _state.value = _state.value.copy(
@@ -107,6 +170,11 @@ class SettingsViewModel(
             settings.setProviderModel(draft.model)
             settings.setBackendBaseUrl(draft.backendUrl.takeIf { it.isNotBlank() })
             settings.setRelayThroughBackend(draft.relayThroughBackend)
+            settings.setHome(
+                label = draft.homeLabel.ifBlank { null },
+                lat = draft.homeLat.toDoubleOrNull(),
+                lng = draft.homeLng.toDoubleOrNull()
+            )
             secrets.providerApiKey = draft.apiKey
             secrets.backendToken = draft.backendToken
 
@@ -194,7 +262,8 @@ class SettingsViewModel(
                     secrets = container.secrets,
                     httpClient = container.httpClient,
                     syncCoordinator = container.syncCoordinator,
-                    fastingRepo = container.fastingRepository
+                    fastingRepo = container.fastingRepository,
+                    consumptionRepo = container.consumptionRepository
                 )
             }
         }
@@ -209,7 +278,10 @@ data class SettingsValues(
     val backendUrl: String = "",
     val backendToken: String = "",
     val relayThroughBackend: Boolean = false,
-    val fasting: FastingProfile = DEFAULT_PROFILE
+    val fasting: FastingProfile = DEFAULT_PROFILE,
+    val homeLabel: String = "",
+    val homeLat: String = "",
+    val homeLng: String = ""
 )
 
 data class SettingsState(
@@ -217,9 +289,18 @@ data class SettingsState(
     val draft: SettingsValues = SettingsValues(),
     val saveStatus: SaveStatus = SaveStatus.Idle,
     val pairStatus: PairStatus = PairStatus.Idle,
-    val syncStatus: SyncStatus = SyncStatus.Idle
+    val syncStatus: SyncStatus = SyncStatus.Idle,
+    val backfillStatus: BackfillStatus = BackfillStatus.Idle,
+    val retagStatus: BackfillStatus = BackfillStatus.Idle
 ) {
     val dirty: Boolean get() = saved != draft
+}
+
+sealed class BackfillStatus {
+    data object Idle : BackfillStatus()
+    data object InFlight : BackfillStatus()
+    data class Done(val rowsUpdated: Int) : BackfillStatus()
+    data class Failed(val message: String) : BackfillStatus()
 }
 
 sealed class SaveStatus {
@@ -245,8 +326,8 @@ sealed class SyncStatus {
             SyncResult.NotConfigured -> Reported("Backend URL or token not set.", true)
             SyncResult.BackendUnreachable -> Reported("Backend unreachable. Check the URL.", true)
             SyncResult.UpToDate -> Reported("Already up to date.", false)
-            is SyncResult.Pushed -> Reported(
-                "Pushed ${result.foodCount} foods, ${result.logCount} logs.",
+            is SyncResult.Synced -> Reported(
+                "Pushed ${result.foodsPushed} foods, ${result.logsPushed} logs; pulled ${result.foodsPulled} + ${result.logsPulled}.",
                 false
             )
             is SyncResult.Failed -> Reported("Sync failed: ${result.message}", true)

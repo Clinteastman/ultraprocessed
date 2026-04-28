@@ -137,8 +137,18 @@ fun FastingPicker(
 
         Spacer(Modifier.height(Tokens.Space.s4))
         when (active.family) {
-            Family.Tre -> EatingWindow(profile, onProfileChange)
-            Family.Weekly, Family.Adf -> RestrictedDayPicker(profile, onProfileChange)
+            Family.Tre -> EatingWindow(profile, onProfileChange, forceCustom = true)
+            Family.Weekly, Family.Adf -> {
+                RestrictedDayPicker(profile, onProfileChange)
+                Spacer(Modifier.height(Tokens.Space.s5))
+                Text(
+                    text = "Daily eating window for normal (non-restricted) days. Set both to 00:00-23:59 to skip.",
+                    color = Semantic.colors.inkMid,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(Tokens.Space.s2))
+                EatingWindow(profile, onProfileChange, forceCustom = false)
+            }
         }
 
         Spacer(Modifier.height(Tokens.Space.s4))
@@ -173,19 +183,51 @@ fun FastingPicker(
 }
 
 @Composable
-private fun EatingWindow(profile: FastingProfile, onChange: (FastingProfile) -> Unit) {
+private fun EatingWindow(
+    profile: FastingProfile,
+    onChange: (FastingProfile) -> Unit,
+    forceCustom: Boolean
+) {
     Column {
         Overline(text = "Eating window")
         Spacer(Modifier.height(Tokens.Space.s2))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Tokens.Space.s3)) {
             TimeField(profile.eatingWindowStartMinutes) { mins ->
-                onChange(profile.copy(eatingWindowStartMinutes = mins, scheduleType = ScheduleType.CUSTOM, name = "Custom"))
+                onChange(applyWindowChange(profile, startMin = mins, forceCustom = forceCustom))
             }
             Text("to", color = Semantic.colors.inkMid, style = MaterialTheme.typography.bodyMedium)
             TimeField(profile.eatingWindowEndMinutes) { mins ->
-                onChange(profile.copy(eatingWindowEndMinutes = mins, scheduleType = ScheduleType.CUSTOM, name = "Custom"))
+                onChange(applyWindowChange(profile, endMin = mins, forceCustom = forceCustom))
             }
         }
+    }
+}
+
+/**
+ * For TRE schedules ([forceCustom] = true), changing the window switches
+ * the schedule to CUSTOM since the preset windows are the defining
+ * property of the preset. For weekly schedules (5:2 / 4:3 / ADF), the
+ * window is *additive* - we keep the schedule type so the user can run
+ * "5:2 plus a daily eating window".
+ */
+private fun applyWindowChange(
+    profile: FastingProfile,
+    startMin: Int = profile.eatingWindowStartMinutes,
+    endMin: Int = profile.eatingWindowEndMinutes,
+    forceCustom: Boolean
+): FastingProfile {
+    return if (forceCustom) {
+        profile.copy(
+            eatingWindowStartMinutes = startMin,
+            eatingWindowEndMinutes = endMin,
+            scheduleType = ScheduleType.CUSTOM,
+            name = "Custom"
+        )
+    } else {
+        profile.copy(
+            eatingWindowStartMinutes = startMin,
+            eatingWindowEndMinutes = endMin
+        )
     }
 }
 
@@ -255,27 +297,63 @@ private fun RestrictedDayPicker(profile: FastingProfile, onChange: (FastingProfi
         )
 
         Spacer(Modifier.height(Tokens.Space.s4))
-        Overline(text = "Restricted-day kcal cap")
+        Overline(text = "Restricted-day calories")
         Spacer(Modifier.height(Tokens.Space.s2))
-        OutlinedTextField(
-            value = profile.restrictedKcalTarget?.toString() ?: "",
-            onValueChange = { raw ->
-                val n = raw.filter { it.isDigit() }.take(5).toIntOrNull()
-                onChange(profile.copy(restrictedKcalTarget = n))
-            },
-            modifier = Modifier.width(140.dp),
-            singleLine = true,
-            placeholder = { Text("500") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = Semantic.colors.surface2,
-                unfocusedContainerColor = Semantic.colors.surface2,
-                focusedTextColor = Semantic.colors.inkHigh,
-                unfocusedTextColor = Semantic.colors.inkHigh,
-                focusedIndicatorColor = Semantic.colors.accent,
-                unfocusedIndicatorColor = Semantic.colors.surface3,
-                cursorColor = Semantic.colors.accent
+
+        // 0 = full fast (no calories). Anything else is the kcal cap.
+        val fullFast = profile.restrictedKcalTarget == 0
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Full fast (no calories)",
+                    color = Semantic.colors.inkHigh,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "Water-only days. Overrides the kcal cap below.",
+                    color = Semantic.colors.inkMid,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Switch(
+                checked = fullFast,
+                onCheckedChange = { checked ->
+                    onChange(profile.copy(restrictedKcalTarget = if (checked) 0 else 500))
+                },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Semantic.colors.accent,
+                    checkedTrackColor = Semantic.colors.accent.copy(alpha = 0.3f)
+                )
             )
-        )
+        }
+        if (!fullFast) {
+            Spacer(Modifier.height(Tokens.Space.s2))
+            OutlinedTextField(
+                value = profile.restrictedKcalTarget?.toString() ?: "",
+                onValueChange = { raw ->
+                    val n = raw.filter { it.isDigit() }.take(5).toIntOrNull()
+                    onChange(profile.copy(restrictedKcalTarget = n))
+                },
+                modifier = Modifier.width(140.dp),
+                singleLine = true,
+                placeholder = { Text("500") },
+                label = { Text("kcal cap") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Semantic.colors.surface2,
+                    unfocusedContainerColor = Semantic.colors.surface2,
+                    focusedTextColor = Semantic.colors.inkHigh,
+                    unfocusedTextColor = Semantic.colors.inkHigh,
+                    focusedIndicatorColor = Semantic.colors.accent,
+                    unfocusedIndicatorColor = Semantic.colors.surface3,
+                    cursorColor = Semantic.colors.accent
+                )
+            )
+        }
     }
 }

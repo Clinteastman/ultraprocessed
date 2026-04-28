@@ -4,14 +4,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.ultraprocessed.theme.Semantic
+import com.ultraprocessed.ui.help.HelpScreen
 import com.ultraprocessed.ui.home.HomeScreen
 import com.ultraprocessed.ui.pairing.PairingScanScreen
+import com.ultraprocessed.ui.places.PlacesScreen
 import com.ultraprocessed.ui.result.ResultScreen
 import com.ultraprocessed.ui.scan.ScanScreen
 import com.ultraprocessed.ui.search.SearchScreen
@@ -23,9 +26,24 @@ import com.ultraprocessed.ui.settings.SettingsScreen
  * destination, with Scan reachable as a push from the FAB.
  */
 @Composable
-fun UltraprocessedApp() {
+fun UltraprocessedApp(
+    deepLinkRoute: String? = null,
+    onDeepLinkConsumed: () -> Unit = {}
+) {
     val mainVm: MainViewModel = viewModel()
     val navController = rememberNavController()
+
+    LaunchedEffect(deepLinkRoute) {
+        when (deepLinkRoute) {
+            "scan" -> navController.navigate(Routes.Scan)
+            "search" -> navController.navigate(Routes.Search)
+            "settings" -> navController.navigate(Routes.Settings)
+            "places" -> navController.navigate(Routes.Places)
+            // "home" or null - already at start destination.
+            else -> Unit
+        }
+        if (deepLinkRoute != null) onDeepLinkConsumed()
+    }
 
     Box(
         modifier = Modifier
@@ -40,7 +58,8 @@ fun UltraprocessedApp() {
                 HomeScreen(
                     onScanTap = { navController.navigate(Routes.Scan) },
                     onSearchTap = { navController.navigate(Routes.Search) },
-                    onOpenSettings = { navController.navigate(Routes.Settings) }
+                    onOpenSettings = { navController.navigate(Routes.Settings) },
+                    onOpenPlaces = { navController.navigate(Routes.Places) }
                 )
             }
             composable(Routes.Search) {
@@ -70,7 +89,9 @@ fun UltraprocessedApp() {
             composable(Routes.Settings) {
                 SettingsScreen(
                     onBack = { navController.popBackStack() },
-                    onScanPairingQr = { navController.navigate(Routes.PairingScan) }
+                    onScanPairingQr = { navController.navigate(Routes.PairingScan) },
+                    onOpenHelp = { navController.navigate(Routes.Help) },
+                    onOpenPlaces = { navController.navigate(Routes.Places) }
                 )
             }
             composable(Routes.PairingScan) {
@@ -78,6 +99,12 @@ fun UltraprocessedApp() {
                     onBack = { navController.popBackStack() },
                     onDone = { navController.popBackStack() }
                 )
+            }
+            composable(Routes.Help) {
+                HelpScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.Places) {
+                PlacesScreen(onBack = { navController.popBackStack() })
             }
         }
     }

@@ -69,7 +69,7 @@
     </div>
 
     <p class="text-xs text-ink-lo mt-4">
-      Weighted by calories across {mealCount} meal{mealCount === 1 ? "" : "s"}.
+      Weighted by calories across {mealCount} item{mealCount === 1 ? "" : "s"}.
     </p>
   {/if}
 </div>

@@ -56,7 +56,9 @@ import com.ultraprocessed.ui.components.Overline
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onScanPairingQr: () -> Unit = {}
+    onScanPairingQr: () -> Unit = {},
+    onOpenHelp: () -> Unit = {},
+    onOpenPlaces: () -> Unit = {}
 ) {
     val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)
     val state by vm.state.collectAsState()
@@ -133,6 +135,59 @@ fun SettingsScreen(
             FastingPicker(
                 profile = draft.fasting,
                 onProfileChange = vm::setFasting
+            )
+
+            Spacer(Modifier.height(Tokens.Space.s7))
+            SectionHeader("Home location")
+            Text(
+                text = "Used as a fallback location label for any item logged without GPS, and to backfill older entries.",
+                color = Semantic.colors.inkLow,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Spacer(Modifier.height(Tokens.Space.s3))
+            Field(
+                label = "Label (e.g. \"Home\")",
+                value = draft.homeLabel,
+                onValueChange = vm::updateHomeLabel
+            )
+            Spacer(Modifier.height(Tokens.Space.s3))
+            Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.s3)) {
+                Box(modifier = Modifier.weight(1f)) {
+                    Field(
+                        label = "Latitude",
+                        value = draft.homeLat,
+                        onValueChange = vm::updateHomeLat
+                    )
+                }
+                Box(modifier = Modifier.weight(1f)) {
+                    Field(
+                        label = "Longitude",
+                        value = draft.homeLng,
+                        onValueChange = vm::updateHomeLng
+                    )
+                }
+            }
+            Spacer(Modifier.height(Tokens.Space.s2))
+            Text(
+                text = "Tip: longitudes in the UK are negative (e.g. -1.7986).",
+                color = Semantic.colors.inkLow,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Spacer(Modifier.height(Tokens.Space.s3))
+            BackfillHomeButton(
+                status = state.backfillStatus,
+                enabled = !state.dirty &&
+                    state.saved.homeLat.toDoubleOrNull() != null &&
+                    state.saved.homeLng.toDoubleOrNull() != null,
+                onClick = vm::backfillUnlocatedAsHome
+            )
+            Spacer(Modifier.height(Tokens.Space.s3))
+            RetagHomeButton(
+                status = state.retagStatus,
+                enabled = !state.dirty &&
+                    state.saved.homeLat.toDoubleOrNull() != null &&
+                    state.saved.homeLng.toDoubleOrNull() != null,
+                onClick = vm::retagHomeItems
             )
 
             Spacer(Modifier.height(Tokens.Space.s7))
@@ -219,6 +274,13 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            Spacer(Modifier.height(Tokens.Space.s7))
+            SectionHeader("More")
+            Spacer(Modifier.height(Tokens.Space.s2))
+            NavRow(label = "Places map", subtitle = "Where you've eaten, with NOVA per place.", onClick = onOpenPlaces)
+            Spacer(Modifier.height(Tokens.Space.s2))
+            NavRow(label = "How this app works", subtitle = "What NOVA is, what fasting schedules mean, why we lead with processing.", onClick = onOpenHelp)
 
             if (state.saveStatus is SaveStatus.Saved && !state.dirty) {
                 Spacer(Modifier.height(Tokens.Space.s4))
@@ -383,6 +445,138 @@ private fun PairBackendButton(
                 )
             }
             else -> Unit
+        }
+    }
+}
+
+@Composable
+private fun RetagHomeButton(
+    status: BackfillStatus,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val inFlight = status is BackfillStatus.InFlight
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(RoundedCornerShape(Tokens.Radius.md))
+                .background(
+                    if (enabled && !inFlight) Semantic.colors.surface2
+                    else Semantic.colors.surface3
+                )
+                .clickable(enabled = enabled && !inFlight, onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (inFlight) "Re-tagging..." else "Re-tag existing Home items with current coords",
+                color = if (enabled && !inFlight) Semantic.colors.inkHigh else Semantic.colors.inkLow,
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+        when (status) {
+            is BackfillStatus.Done -> {
+                Spacer(Modifier.height(Tokens.Space.s2))
+                Text(
+                    text = "Re-tagged ${status.rowsUpdated} item${if (status.rowsUpdated == 1) "" else "s"}.",
+                    color = Semantic.colors.success,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            is BackfillStatus.Failed -> {
+                Spacer(Modifier.height(Tokens.Space.s2))
+                Text(
+                    text = status.message,
+                    color = Semantic.colors.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            else -> Unit
+        }
+    }
+}
+
+@Composable
+private fun NavRow(label: String, subtitle: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Tokens.Radius.md))
+            .background(Semantic.colors.surface1)
+            .clickable(onClick = onClick)
+            .padding(Tokens.Space.s4),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                color = Semantic.colors.inkHigh,
+                style = MaterialTheme.typography.titleSmall
+            )
+            Text(
+                text = subtitle,
+                color = Semantic.colors.inkMid,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+        Text(text = "›", color = Semantic.colors.inkMid)
+    }
+}
+
+@Composable
+private fun BackfillHomeButton(
+    status: BackfillStatus,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val inFlight = status is BackfillStatus.InFlight
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(RoundedCornerShape(Tokens.Radius.md))
+                .background(
+                    if (enabled && !inFlight) Semantic.colors.surface2
+                    else Semantic.colors.surface3
+                )
+                .clickable(enabled = enabled && !inFlight, onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (inFlight) "Tagging..." else "Tag past items without location as Home",
+                color = if (enabled && !inFlight) Semantic.colors.inkHigh else Semantic.colors.inkLow,
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+        when (status) {
+            is BackfillStatus.Done -> {
+                Spacer(Modifier.height(Tokens.Space.s2))
+                Text(
+                    text = "Tagged ${status.rowsUpdated} item${if (status.rowsUpdated == 1) "" else "s"} as Home.",
+                    color = Semantic.colors.success,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            is BackfillStatus.Failed -> {
+                Spacer(Modifier.height(Tokens.Space.s2))
+                Text(
+                    text = status.message,
+                    color = Semantic.colors.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            else -> {
+                if (!enabled) {
+                    Spacer(Modifier.height(Tokens.Space.s2))
+                    Text(
+                        text = "Set lat/lng above and tap Save first.",
+                        color = Semantic.colors.inkLow,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
         }
     }
 }

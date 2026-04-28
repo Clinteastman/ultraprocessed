@@ -55,6 +55,21 @@ fun NutrientBreakdown(
     val consumed = remember(nutrientsPer100g, factorOf100g) {
         nutrientsPer100g.scaledBy(factorOf100g)
     }
+    NutrientBreakdownConsumed(consumed = consumed, modifier = modifier)
+}
+
+/**
+ * Variant that accepts already-consumed totals (e.g. from
+ * [com.ultraprocessed.domain.aggregate]) without re-scaling. Useful on the
+ * home screen where we display daily aggregates rather than per-meal
+ * portions.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun NutrientBreakdownConsumed(
+    consumed: Nutrients,
+    modifier: Modifier = Modifier
+) {
     var expanded by remember { mutableStateOf(false) }
 
     val macros = listOfNotNull(

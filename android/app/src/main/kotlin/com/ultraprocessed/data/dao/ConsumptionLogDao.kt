@@ -58,6 +58,17 @@ interface ConsumptionLogDao {
     )
     fun observeRecent(limit: Int = 200): Flow<List<ConsumptionWithFood>>
 
+    @Transaction
+    @Query(
+        """
+        SELECT * FROM consumption_log
+        WHERE lat IS NOT NULL AND lng IS NOT NULL
+        ORDER BY eaten_at DESC
+        LIMIT :limit
+        """
+    )
+    fun observeLocated(limit: Int = 1000): Flow<List<ConsumptionWithFood>>
+
     @Query("SELECT * FROM consumption_log WHERE sync_state = :state")
     suspend fun pending(state: SyncState = SyncState.PENDING): List<ConsumptionLog>
 
@@ -77,4 +88,33 @@ interface ConsumptionLogDao {
 
     @Query("DELETE FROM consumption_log WHERE client_uuid = :uuid")
     suspend fun deleteByClientUuid(uuid: String)
+
+    /**
+     * Tags every log that doesn't yet have a location with the given coords
+     * + label, and re-marks them PENDING so the next sync re-uploads them.
+     * Returns the number of rows affected.
+     */
+    @Query(
+        """
+        UPDATE consumption_log
+        SET lat = :lat, lng = :lng, location_label = :label, sync_state = 'PENDING'
+        WHERE lat IS NULL AND lng IS NULL
+        """
+    )
+    suspend fun backfillMissingLocation(lat: Double, lng: Double, label: String): Int
+
+    /**
+     * Re-applies the given coords to every log already tagged with [label]
+     * (case-sensitive). Used when the saved Home coords were wrong and need
+     * to be propagated to past entries that already have the Home label.
+     * Re-marks rows PENDING so the next sync pushes the corrected coords.
+     */
+    @Query(
+        """
+        UPDATE consumption_log
+        SET lat = :lat, lng = :lng, sync_state = 'PENDING'
+        WHERE location_label = :label
+        """
+    )
+    suspend fun retagLocation(lat: Double, lng: Double, label: String): Int
 }

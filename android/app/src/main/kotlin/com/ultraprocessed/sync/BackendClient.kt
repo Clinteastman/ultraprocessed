@@ -66,6 +66,37 @@ class BackendClient(
     }
 
     /**
+     * Pull recent foods from the backend. Used by [SyncCoordinator] to
+     * surface entries created on other clients (dashboard, Home Assistant,
+     * a second phone) on this device.
+     */
+    suspend fun listFoods(sinceIso: String? = null, limit: Int = 200): Result<List<FoodEntryDto>> = runCatching {
+        val q = buildString {
+            append("?limit=").append(limit)
+            if (sinceIso != null) append("&since=").append(sinceIso)
+        }
+        val resp = client.get("${baseUrl.trimEnd('/')}/api/v1/foods$q") { bearerAuth(token) }
+        if (!resp.status.isSuccess()) error("HTTP ${resp.status.value}: ${resp.bodyAsText().take(200)}")
+        resp.body<List<FoodEntryDto>>()
+    }
+
+    /** Pull recent consumption logs. [fromIso] / [toIso] are optional ISO-8601 bounds. */
+    suspend fun listConsumption(
+        fromIso: String? = null,
+        toIso: String? = null,
+        limit: Int = 500
+    ): Result<List<ConsumptionLogDto>> = runCatching {
+        val q = buildString {
+            append("?limit=").append(limit)
+            if (fromIso != null) append("&from=").append(fromIso)
+            if (toIso != null) append("&to=").append(toIso)
+        }
+        val resp = client.get("${baseUrl.trimEnd('/')}/api/v1/consumption$q") { bearerAuth(token) }
+        if (!resp.status.isSuccess()) error("HTTP ${resp.status.value}: ${resp.bodyAsText().take(200)}")
+        resp.body<List<ConsumptionLogDto>>()
+    }
+
+    /**
      * Issues a fresh device token. The phone calls this once during the
      * pairing flow in Settings; the returned token replaces whatever was
      * stored before.
@@ -87,6 +118,15 @@ class BackendClient(
             setBody(profile)
         }
         if (!resp.status.isSuccess()) error("HTTP ${resp.status.value}: ${resp.bodyAsText().take(200)}")
+    }
+
+    /** Fetch the active fasting profile, if one is set. */
+    suspend fun getActiveFastingProfile(): Result<FastingProfileDto?> = runCatching {
+        val resp = client.get("${baseUrl.trimEnd('/')}/api/v1/fasting/profile") { bearerAuth(token) }
+        if (!resp.status.isSuccess()) error("HTTP ${resp.status.value}: ${resp.bodyAsText().take(200)}")
+        val body = resp.bodyAsText()
+        if (body.isBlank() || body == "null") null
+        else com.ultraprocessed.core.Http.Json.decodeFromString(FastingProfileDto.serializer(), body)
     }
 
     /** Upload a JPEG image for a food, identified by its client_uuid. */

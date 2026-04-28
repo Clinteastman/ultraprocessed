@@ -35,6 +35,15 @@ class Settings(context: Context) {
         it[Keys.RelayThroughBackend] ?: false
     }
 
+    /**
+     * "Home" location, used as the fallback location label/coords when the
+     * device GPS isn't available or the user opts not to share live
+     * location. Strings so a partially-set home (label only) is allowed.
+     */
+    val homeLabel: Flow<String?> = ds.data.map { it[Keys.HomeLabel] }
+    val homeLat: Flow<Double?> = ds.data.map { it[Keys.HomeLat]?.toDoubleOrNull() }
+    val homeLng: Flow<Double?> = ds.data.map { it[Keys.HomeLng]?.toDoubleOrNull() }
+
     suspend fun setProvider(p: ProviderType) {
         ds.edit { prefs ->
             prefs[Keys.Provider] = p.key
@@ -56,12 +65,21 @@ class Settings(context: Context) {
     }
     suspend fun setRelayThroughBackend(value: Boolean) = ds.edit { it[Keys.RelayThroughBackend] = value }
 
+    suspend fun setHome(label: String?, lat: Double?, lng: Double?) = ds.edit { prefs ->
+        if (label.isNullOrBlank()) prefs.remove(Keys.HomeLabel) else prefs[Keys.HomeLabel] = label
+        if (lat == null) prefs.remove(Keys.HomeLat) else prefs[Keys.HomeLat] = lat.toString()
+        if (lng == null) prefs.remove(Keys.HomeLng) else prefs[Keys.HomeLng] = lng.toString()
+    }
+
     private object Keys {
         val Provider = stringPreferencesKey("provider")
         val ProviderBaseUrl = stringPreferencesKey("provider_base_url")
         val ProviderModel = stringPreferencesKey("provider_model")
         val BackendBaseUrl = stringPreferencesKey("backend_base_url")
         val RelayThroughBackend = booleanPreferencesKey("relay_through_backend")
+        val HomeLabel = stringPreferencesKey("home_label")
+        val HomeLat = stringPreferencesKey("home_lat")
+        val HomeLng = stringPreferencesKey("home_lng")
     }
 
     companion object {

@@ -152,7 +152,7 @@ private fun DayHeader(label: String, items: List<ConsumptionWithFood>) {
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Overline(text = label)
-        Overline(text = "$mealCount meals  ·  $totalKcal kcal")
+        Overline(text = "$mealCount item${if (mealCount == 1) "" else "s"}  ·  $totalKcal kcal")
     }
 }
 

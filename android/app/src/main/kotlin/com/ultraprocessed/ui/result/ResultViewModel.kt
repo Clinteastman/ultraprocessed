@@ -16,7 +16,9 @@ import com.ultraprocessed.data.entities.FoodSource
 import com.ultraprocessed.data.entities.SyncState
 import com.ultraprocessed.data.repository.ConsumptionRepository
 import com.ultraprocessed.data.repository.FoodRepository
+import com.ultraprocessed.location.LocationProvider
 import com.ultraprocessed.ui.PendingResult
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
@@ -102,12 +104,17 @@ class ResultViewModel(
             // consumers read gramsEaten.
             val legacyPct = ((gramsEaten / 100.0) * 100.0).toInt().coerceIn(0, 999)
 
+            val (lat, lng, label) = resolveLocation()
+
             val log = ConsumptionLog(
                 clientUuid = UUID.randomUUID().toString(),
                 foodClientUuid = foodUuid,
                 percentageEaten = legacyPct.coerceAtMost(100),
                 gramsEaten = gramsEaten,
                 eatenAt = now,
+                lat = lat,
+                lng = lng,
+                locationLabel = label,
                 kcalConsumedSnapshot = kcalSnapshot,
                 nutrientsConsumedJson = consumedNutrientsJson,
                 createdAt = now
@@ -118,16 +125,45 @@ class ResultViewModel(
         }
     }
 
+    /**
+     * Resolves the location for a new log: prefer a fresh device fix
+     * (when permission granted), fall back to the saved Home coords,
+     * fall back to no location at all. Never blocks the log on GPS for
+     * more than a few seconds - meals get logged regardless. If the live
+     * fix is within ~150m of Home, the log inherits the Home label so
+     * history reads coherently rather than as a sea of raw coords.
+     */
+    private suspend fun resolveLocation(): Triple<Double?, Double?, String?> {
+        val homeLat = container.settings.homeLat.first()
+        val homeLng = container.settings.homeLng.first()
+        val homeLabel = container.settings.homeLabel.first()?.takeIf { it.isNotBlank() }
+
+        val live = LocationProvider.current(container.appContext)
+        if (live != null) {
+            val label = if (homeLat != null && homeLng != null && nearHome(live, homeLat, homeLng)) {
+                homeLabel ?: "Home"
+            } else null
+            return Triple(live.lat, live.lng, label)
+        }
+        // No live fix: use Home as a labelled fallback when set.
+        val fallbackLabel = homeLabel ?: if (homeLat != null && homeLng != null) "Home" else null
+        return Triple(homeLat, homeLng, fallbackLabel)
+    }
+
+    private fun nearHome(live: com.ultraprocessed.location.DeviceLocation, hLat: Double, hLng: Double): Boolean {
+        val dLat = (live.lat - hLat) * 111_000.0
+        val dLng = (live.lng - hLng) * 111_000.0 * Math.cos(Math.toRadians(hLat))
+        return kotlin.math.sqrt(dLat * dLat + dLng * dLng) < 150.0
+    }
+
     private fun writeImage(uuid: String, bytes: ByteArray): String? {
         return runCatching {
-            val dir = File(container.let { (it as? AppContainerWithContext)?.appContext?.filesDir ?: defaultDir() }, "scans").apply { mkdirs() }
+            val dir = File(container.appContext.filesDir, "scans").apply { mkdirs() }
             val file = File(dir, "$uuid.jpg")
             file.writeBytes(bytes)
             file.absolutePath
         }.getOrNull()
     }
-
-    private fun defaultDir(): File = File(System.getProperty("java.io.tmpdir") ?: "/tmp")
 
     /**
      * kcal for a given gram amount. Prefers per-100g (most precise); falls
@@ -154,10 +190,3 @@ class ResultViewModel(
     }
 }
 
-/**
- * Compatibility shim - keeps the [writeImage] helper readable while we
- * have AppContainer not exposing context directly.
- */
-private interface AppContainerWithContext {
-    val appContext: android.content.Context
-}

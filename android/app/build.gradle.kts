@@ -120,4 +120,11 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.coil.compose)
+
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.glance.material3)
+
+    implementation(libs.play.services.location)
+
+    implementation(libs.osmdroid.android)
 }

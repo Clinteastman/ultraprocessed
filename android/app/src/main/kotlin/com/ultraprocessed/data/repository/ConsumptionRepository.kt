@@ -15,6 +15,9 @@ class ConsumptionRepository(private val dao: ConsumptionLogDao) {
     fun observeRecent(limit: Int = 200): Flow<List<ConsumptionWithFood>> =
         dao.observeRecent(limit)
 
+    fun observeLocated(limit: Int = 1000): Flow<List<ConsumptionWithFood>> =
+        dao.observeLocated(limit)
+
     fun observeKcalSumInRange(fromMs: Long, toMs: Long): Flow<Double> =
         dao.observeKcalSumInRange(fromMs, toMs)
 
@@ -25,4 +28,10 @@ class ConsumptionRepository(private val dao: ConsumptionLogDao) {
     fun observePendingCount(): Flow<Int> = dao.observePendingCount()
 
     suspend fun delete(uuid: String) = dao.deleteByClientUuid(uuid)
+
+    suspend fun backfillMissingLocation(lat: Double, lng: Double, label: String): Int =
+        dao.backfillMissingLocation(lat, lng, label)
+
+    suspend fun retagLocation(lat: Double, lng: Double, label: String): Int =
+        dao.retagLocation(lat, lng, label)
 }

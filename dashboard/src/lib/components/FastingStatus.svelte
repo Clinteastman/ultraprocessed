@@ -77,33 +77,50 @@
     if (tick) clearInterval(tick);
   });
 
-  const display = $derived.by(() => {
+  type Display = {
+    title: string;
+    sub: string;
+    accent: string;
+    /** 0..1 progress through the current phase, or null if not meaningful. */
+    progress: number | null;
+  };
+
+  function tre(p: Profile, n: Date): Display {
+    const start = p.eating_window_start_minutes;
+    const end = p.eating_window_end_minutes;
+    const minutesNow = n.getHours() * 60 + n.getMinutes();
+    const inWindow = minutesNow >= start && minutesNow <= end;
+    if (inWindow) {
+      const closeAt = new Date(n);
+      closeAt.setHours(0, 0, 0, 0);
+      closeAt.setMinutes(end);
+      const windowSize = Math.max(1, end - start);
+      return {
+        title: "Eating window open",
+        sub: `Closes at ${timeOf(end)} · ${diffParts(closeAt.getTime(), n.getTime())} left`,
+        accent: "#5BC97D",
+        progress: Math.min(1, Math.max(0, (minutesNow - start) / windowSize))
+      };
+    }
+    const nextOpen = new Date(n);
+    nextOpen.setHours(0, 0, 0, 0);
+    nextOpen.setMinutes(start);
+    if (minutesNow > end) nextOpen.setDate(nextOpen.getDate() + 1);
+    const fastSize = Math.max(1, 1440 - (end - start));
+    const elapsed = minutesNow > end ? minutesNow - end : (1440 - end) + minutesNow;
+    return {
+      title: "Fasting",
+      sub: `Eat next at ${timeOf(start)} · ${diffParts(nextOpen.getTime(), n.getTime())} to go`,
+      accent: "#E8A04A",
+      progress: Math.min(1, Math.max(0, elapsed / fastSize))
+    };
+  }
+
+  const display = $derived.by((): Display | null => {
     if (!profile || !profile.active) return null;
 
     if (TRE.has(profile.schedule_type)) {
-      const start = profile.eating_window_start_minutes;
-      const end = profile.eating_window_end_minutes;
-      const minutesNow = now.getHours() * 60 + now.getMinutes();
-      const inWindow = minutesNow >= start && minutesNow <= end;
-      if (inWindow) {
-        const closeAt = new Date(now);
-        closeAt.setHours(0, 0, 0, 0);
-        closeAt.setMinutes(end);
-        return {
-          title: "Eating window open",
-          sub: `Closes at ${timeOf(end)} · ${diffParts(closeAt.getTime(), now.getTime())} left`,
-          accent: "#5BC97D"
-        };
-      }
-      const nextOpen = new Date(now);
-      nextOpen.setHours(0, 0, 0, 0);
-      nextOpen.setMinutes(start);
-      if (minutesNow > end) nextOpen.setDate(nextOpen.getDate() + 1);
-      return {
-        title: "Fasting",
-        sub: `Eat next at ${timeOf(start)} · ${diffParts(nextOpen.getTime(), now.getTime())} to go`,
-        accent: "#E8A04A"
-      };
+      return tre(profile, now);
     }
 
     // Weekly restricted patterns: 5:2, 4:3, ADF.
@@ -111,42 +128,76 @@
     const todayBit = 1 << dowMon0(now);
     const todayRestricted = (mask & todayBit) !== 0;
     if (todayRestricted) {
-      const cap = profile.restricted_kcal_target ?? 500;
+      const cap = profile.restricted_kcal_target;
+      const title =
+        cap === 0
+          ? "Full fast · water only"
+          : cap != null
+            ? `Restricted day · ${cap} kcal cap`
+            : "Restricted day";
       const reset = endOfDay(now);
+      const minutesNow = now.getHours() * 60 + now.getMinutes();
       return {
-        title: `Restricted day · ${cap} kcal cap`,
+        title,
         sub: `Resets at midnight · ${diffParts(reset.getTime(), now.getTime())} to go`,
-        accent: "#E8A04A"
+        accent: "#E8A04A",
+        progress: Math.min(1, Math.max(0, minutesNow / 1440))
       };
     }
+    // Non-restricted day. If a daily eating window is set on this weekly
+    // schedule, fall through to TRE-style display so the user has a clear
+    // "eat next at" rather than just "next restricted day in 4 days".
+    const hasEatingWindow =
+      profile.eating_window_start_minutes > 0 || profile.eating_window_end_minutes < 1440;
+    if (hasEatingWindow) return tre(profile, now);
+
     const next = nextRestrictedDay(mask, now);
     if (!next) {
       return {
         title: "Active fasting plan",
         sub: "No restricted days configured.",
-        accent: "#6E6C66"
+        accent: "#6E6C66",
+        progress: null
       };
     }
     const dayLabel = next.toLocaleDateString(undefined, { weekday: "long" });
+    const todayMidnight = new Date(now);
+    todayMidnight.setHours(0, 0, 0, 0);
+    const total = Math.max(1, next.getTime() - todayMidnight.getTime());
+    const elapsed = Math.max(0, now.getTime() - todayMidnight.getTime());
     return {
       title: "Normal eating today",
       sub: `Next restricted day: ${dayLabel} · ${diffParts(next.getTime(), now.getTime())}`,
-      accent: "#5BC97D"
+      accent: "#5BC97D",
+      progress: Math.min(1, Math.max(0, elapsed / total))
     };
   });
 </script>
 
 {#if loaded && display}
   <div
-    class="rounded-lg p-4 flex items-center gap-4"
+    class="rounded-lg p-4 flex flex-col gap-3"
     style="background-color: color-mix(in srgb, {display.accent} 14%, transparent);"
   >
-    <div class="w-2 h-2 rounded-full" style="background-color: {display.accent};"></div>
-    <div class="flex-1 min-w-0">
-      <p class="text-sm font-medium" style="color: {display.accent};">{display.title}</p>
-      <p class="text-sm text-ink-mid">{display.sub}</p>
+    <div class="flex items-center gap-4">
+      <div class="w-2 h-2 rounded-full" style="background-color: {display.accent};"></div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium" style="color: {display.accent};">{display.title}</p>
+        <p class="text-sm text-ink-mid">{display.sub}</p>
+      </div>
+      <a href="/settings" class="text-xs text-ink-lo hover:text-ink-hi">Edit</a>
     </div>
-    <a href="/settings" class="text-xs text-ink-lo hover:text-ink-hi">Edit</a>
+    {#if display.progress != null}
+      <div
+        class="w-full h-1.5 rounded-full"
+        style="background-color: color-mix(in srgb, {display.accent} 20%, transparent);"
+      >
+        <div
+          class="h-full rounded-full transition-all"
+          style="width: {Math.round(display.progress * 100)}%; background-color: {display.accent};"
+        ></div>
+      </div>
+    {/if}
   </div>
 {:else if loaded}
   <a

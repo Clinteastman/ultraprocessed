@@ -1,7 +1,12 @@
 package com.ultraprocessed.ui.home
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -31,8 +37,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,7 +64,10 @@ import com.ultraprocessed.theme.Tokens
 import com.ultraprocessed.theme.novaColor
 import com.ultraprocessed.ui.components.DateRangeChips
 import com.ultraprocessed.ui.components.DietScoreCard
+import com.ultraprocessed.ui.components.EatingTimeline
 import com.ultraprocessed.ui.components.FastingStatusStrip
+import com.ultraprocessed.ui.components.MiniPlacesMap
+import com.ultraprocessed.ui.components.NutrientBreakdownConsumed
 import com.ultraprocessed.ui.components.NovaPill
 import com.ultraprocessed.ui.components.Overline
 import com.ultraprocessed.ui.components.SyncIconState
@@ -72,11 +83,13 @@ import kotlin.math.roundToInt
 fun HomeScreen(
     onScanTap: () -> Unit,
     onSearchTap: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenPlaces: () -> Unit = {}
 ) {
     val vm: HomeViewModel = viewModel(factory = HomeViewModel.Factory)
     val selected by vm.selected.collectAsState()
     val state by vm.state.collectAsState()
+    val isRefreshing by vm.isRefreshing.collectAsState()
     var editing by remember { mutableStateOf<ConsumptionWithFood?>(null) }
     var showRangePicker by remember { mutableStateOf(false) }
 
@@ -85,6 +98,29 @@ fun HomeScreen(
     val context = LocalContext.current
     val container = remember(context) {
         (context.applicationContext as UltraprocessedApplication).container
+    }
+
+    // Ask once for coarse location so future logs can attach a real lat/lng.
+    // If the user denies, they can still set a Home in Settings - we never
+    // require it. We only ask when neither permission is already granted.
+    val locationPermLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { /* result ignored: silent fallback to Home */ }
+    LaunchedEffect(Unit) {
+        val coarse = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val fine = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!coarse && !fine) {
+            locationPermLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                )
+            )
+        }
     }
     val pendingFoods by container.foodRepository.observePendingCount().collectAsState(initial = 0)
     val pendingLogs by container.consumptionRepository.observePendingCount().collectAsState(initial = 0)
@@ -95,6 +131,11 @@ fun HomeScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Semantic.colors.bg)) {
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { vm.refresh() },
+            modifier = Modifier.fillMaxSize()
+        ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
@@ -133,6 +174,21 @@ fun HomeScreen(
                                 .size(40.dp)
                                 .clip(CircleShape)
                                 .background(Semantic.colors.surface1)
+                                .clickable(onClick = onOpenPlaces),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Map,
+                                contentDescription = "Places map",
+                                tint = Semantic.colors.inkHigh
+                            )
+                        }
+                        Spacer(Modifier.size(Tokens.Space.s2))
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(Semantic.colors.surface1)
                                 .clickable(onClick = onOpenSettings),
                             contentAlignment = Alignment.Center
                         ) {
@@ -166,6 +222,22 @@ fun HomeScreen(
                 )
             }
 
+            item("timeline") {
+                EatingTimeline(
+                    items = state.items,
+                    fasting = activeFasting,
+                    windowFromMs = state.window.fromMs,
+                    windowToMs = state.window.toMs
+                )
+            }
+
+            item("mini-map") {
+                MiniPlacesMap(
+                    items = state.items,
+                    onTap = onOpenPlaces
+                )
+            }
+
             item("diet-score") {
                 DietScoreCard(
                     novaAverage = agg.novaAverage,
@@ -187,10 +259,14 @@ fun HomeScreen(
                 )
             }
 
+            item("nutrients") {
+                NutrientCard(consumed = agg.nutrientsConsumed)
+            }
+
             if (state.items.isNotEmpty()) {
-                item("meals-header") {
+                item("items-header") {
                     Spacer(Modifier.height(Tokens.Space.s2))
-                    Overline(text = "Meals")
+                    Overline(text = "Items")
                 }
                 items(state.items, key = { it.log.clientUuid }) { item ->
                     MealRow(item = item, onTap = { editing = item })
@@ -211,6 +287,7 @@ fun HomeScreen(
                     }
                 }
             }
+        }
         }
 
         // FAB cluster: camera (primary) + plain-text search (secondary).
@@ -352,6 +429,21 @@ private fun deriveSyncIconState(pendingCount: Int, lastResult: SyncResult): Sync
     }
 
 @Composable
+private fun NutrientCard(consumed: com.ultraprocessed.analyzer.Nutrients) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Tokens.Radius.md))
+            .background(Semantic.colors.surface1)
+            .padding(Tokens.Space.s4)
+    ) {
+        Overline(text = "Nutrients today")
+        Spacer(Modifier.height(Tokens.Space.s2))
+        NutrientBreakdownConsumed(consumed = consumed)
+    }
+}
+
+@Composable
 private fun CalorieSummary(totalKcal: Double, mealCount: Int) {
     Column(
         modifier = Modifier
@@ -370,7 +462,7 @@ private fun CalorieSummary(totalKcal: Double, mealCount: Int) {
             )
             Spacer(Modifier.size(Tokens.Space.s2))
             Text(
-                text = "kcal · $mealCount meal${if (mealCount == 1) "" else "s"}",
+                text = "kcal · $mealCount item${if (mealCount == 1) "" else "s"}",
                 color = Semantic.colors.inkMid,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(bottom = 6.dp)

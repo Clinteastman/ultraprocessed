@@ -14,6 +14,7 @@ import com.ultraprocessed.data.entities.ConsumptionLog
 import com.ultraprocessed.data.entities.FoodEntry
 import com.ultraprocessed.data.entities.FoodSource
 import com.ultraprocessed.data.entities.SyncState
+import com.ultraprocessed.location.LocationProvider
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -75,6 +77,7 @@ class SearchViewModel(
                 Http.Json.encodeToString(Nutrients.serializer(), it)
             }
             val legacyPct = ((grams / 100.0) * 100.0).toInt().coerceIn(0, 100)
+            val (lat, lng, label) = readHome()
 
             val log = ConsumptionLog(
                 clientUuid = UUID.randomUUID().toString(),
@@ -82,6 +85,9 @@ class SearchViewModel(
                 percentageEaten = legacyPct,
                 gramsEaten = grams,
                 eatenAt = now,
+                lat = lat,
+                lng = lng,
+                locationLabel = label,
                 kcalConsumedSnapshot = kcalSnapshot,
                 nutrientsConsumedJson = consumedNutrientsJson,
                 createdAt = now
@@ -90,6 +96,25 @@ class SearchViewModel(
             container.syncCoordinator.trigger()
             onDone()
         }
+    }
+
+    private suspend fun readHome(): Triple<Double?, Double?, String?> {
+        val homeLat = container.settings.homeLat.first()
+        val homeLng = container.settings.homeLng.first()
+        val homeLabel = container.settings.homeLabel.first()?.takeIf { it.isNotBlank() }
+
+        val live = LocationProvider.current(container.appContext)
+        if (live != null) {
+            val nearHome = homeLat != null && homeLng != null && run {
+                val dLat = (live.lat - homeLat) * 111_000.0
+                val dLng = (live.lng - homeLng) * 111_000.0 * Math.cos(Math.toRadians(homeLat))
+                kotlin.math.sqrt(dLat * dLat + dLng * dLng) < 150.0
+            }
+            val label = if (nearHome) (homeLabel ?: "Home") else null
+            return Triple(live.lat, live.lng, label)
+        }
+        val fallbackLabel = homeLabel ?: if (homeLat != null && homeLng != null) "Home" else null
+        return Triple(homeLat, homeLng, fallbackLabel)
     }
 
     /**
@@ -149,12 +174,16 @@ class SearchViewModel(
                     Http.Json.encodeToString(Nutrients.serializer(), it)
                 }
                 val legacyPct = ((grams / 100.0) * 100.0).toInt().coerceIn(0, 100)
+                val (lat, lng, label) = readHome()
                 val log = ConsumptionLog(
                     clientUuid = UUID.randomUUID().toString(),
                     foodClientUuid = foodUuid,
                     percentageEaten = legacyPct,
                     gramsEaten = grams,
                     eatenAt = now,
+                    lat = lat,
+                    lng = lng,
+                    locationLabel = label,
                     kcalConsumedSnapshot = kcalSnapshot,
                     nutrientsConsumedJson = consumedNutrientsJson,
                     createdAt = now
