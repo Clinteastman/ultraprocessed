@@ -7,7 +7,9 @@
   import CalorieChart from "$lib/components/CalorieChart.svelte";
   import DateRangePicker, { type DateRange } from "$lib/components/DateRangePicker.svelte";
   import DietScoreCard from "$lib/components/DietScoreCard.svelte";
+  import EatingTimeline from "$lib/components/EatingTimeline.svelte";
   import FastingStatus from "$lib/components/FastingStatus.svelte";
+  import MiniPlacesMap from "$lib/components/MiniPlacesMap.svelte";
   import NovaTrendChart from "$lib/components/NovaTrendChart.svelte";
   import UpfShareCard from "$lib/components/UpfShareCard.svelte";
 
@@ -304,6 +306,16 @@
   </div>
 
   <FastingStatus />
+
+  {#if !loading && !error && aggregate}
+    <EatingTimeline
+      {logs}
+      {foods}
+      fromMs={range.from.getTime()}
+      toMs={range.to.getTime()}
+    />
+    <MiniPlacesMap {logs} {foods} />
+  {/if}
 
   {#if loading}
     <div class="text-ink-mid">Loading...</div>
