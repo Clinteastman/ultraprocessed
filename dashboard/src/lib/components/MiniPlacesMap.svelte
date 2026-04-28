@@ -119,15 +119,12 @@
   class="block rounded-lg bg-surface-1 overflow-hidden hover:opacity-95 transition-opacity"
   title="Open the full places map"
 >
-  <div class="px-6 pt-4">
-    <p class="text-xs uppercase tracking-wider text-ink-mid">Where</p>
-  </div>
   {#if located.length === 0}
-    <div class="px-6 pb-6 pt-2 text-sm text-ink-mid">
-      Nothing located in this period yet.
+    <div class="px-6 py-5 text-sm text-ink-mid">
+      Nothing located in this period yet. Tap to open the full map.
     </div>
   {:else}
-    <div bind:this={container} class="h-44 w-full mt-3"></div>
+    <div bind:this={container} class="h-44 w-full"></div>
   {/if}
 </a>
 
