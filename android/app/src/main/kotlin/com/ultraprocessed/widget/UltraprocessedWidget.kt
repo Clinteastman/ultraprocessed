@@ -209,7 +209,7 @@ private fun WidgetContent(
                 route = "scan",
                 modifier = GlanceModifier.defaultWeight()
             )
-            Spacer(GlanceModifier.width(10.dp))
+            Spacer(GlanceModifier.width(8.dp))
             ActionTile(
                 label = "Search",
                 iconRes = R.drawable.ic_widget_search,
@@ -217,7 +217,15 @@ private fun WidgetContent(
                 route = "search",
                 modifier = GlanceModifier.defaultWeight()
             )
-            Spacer(GlanceModifier.width(10.dp))
+            Spacer(GlanceModifier.width(8.dp))
+            ActionTile(
+                label = "Gut",
+                iconRes = R.drawable.ic_widget_gut,
+                emphasis = TileEmphasis.Surface,
+                route = "gut",
+                modifier = GlanceModifier.defaultWeight()
+            )
+            Spacer(GlanceModifier.width(8.dp))
             ActionTile(
                 label = "Open",
                 iconRes = R.drawable.ic_widget_open,

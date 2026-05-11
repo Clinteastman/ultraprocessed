@@ -27,6 +27,7 @@ import com.ultraprocessed.theme.novaColor
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import androidx.core.graphics.drawable.toDrawable
@@ -89,7 +90,7 @@ fun MiniPlacesMap(
                             isHorizontalScrollBarEnabled = false
                             isVerticalScrollBarEnabled = false
                             // No zoom controls UI; this is a preview.
-                            setBuiltInZoomControls(false)
+                            zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
                         }
                     },
                     update = { map ->

@@ -1,8 +1,10 @@
 package com.ultraprocessed.data
 
 import androidx.room.TypeConverter
+import com.ultraprocessed.data.entities.FodmapLevel
 import com.ultraprocessed.data.entities.FoodSource
 import com.ultraprocessed.data.entities.ScheduleType
+import com.ultraprocessed.data.entities.SymptomKind
 import com.ultraprocessed.data.entities.SyncState
 
 /**
@@ -29,4 +31,16 @@ class Converters {
 
     @TypeConverter
     fun toScheduleType(value: String): ScheduleType = ScheduleType.valueOf(value)
+
+    @TypeConverter
+    fun fromSymptomKind(value: SymptomKind): String = value.name
+
+    @TypeConverter
+    fun toSymptomKind(value: String): SymptomKind = SymptomKind.valueOf(value)
+
+    @TypeConverter
+    fun fromFodmapLevel(value: FodmapLevel): String = value.name
+
+    @TypeConverter
+    fun toFodmapLevel(value: String): FodmapLevel = FodmapLevel.valueOf(value)
 }

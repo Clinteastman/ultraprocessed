@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1 import auth, consumption, dashboard, export, fasting, food_images, foods, ha, openfoodfacts, targets
+from app.api.v1 import auth, consumption, dashboard, export, fasting, food_images, foods, ha, ibs, openfoodfacts, targets
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(auth.router)
@@ -14,5 +14,6 @@ router.include_router(fasting.router)
 router.include_router(openfoodfacts.router)
 router.include_router(dashboard.router)
 router.include_router(ha.router)
+router.include_router(ibs.router)
 router.include_router(targets.router)
 router.include_router(export.router)

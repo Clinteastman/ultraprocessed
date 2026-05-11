@@ -9,6 +9,7 @@
   import DietScoreCard from "$lib/components/DietScoreCard.svelte";
   import EatingTimeline from "$lib/components/EatingTimeline.svelte";
   import FastingStatus from "$lib/components/FastingStatus.svelte";
+  import GutSummaryCard from "$lib/components/GutSummaryCard.svelte";
   import MiniPlacesMap from "$lib/components/MiniPlacesMap.svelte";
   import NovaTrendChart from "$lib/components/NovaTrendChart.svelte";
   import UpfShareCard from "$lib/components/UpfShareCard.svelte";
@@ -335,6 +336,10 @@
         totalKcal={aggregate.calories_consumed}
       />
     </section>
+
+    {#if range.preset === "today"}
+      <GutSummaryCard />
+    {/if}
 
     <section class="rounded-lg bg-surface-1 p-6">
       <div class="flex flex-wrap items-baseline justify-between gap-3">

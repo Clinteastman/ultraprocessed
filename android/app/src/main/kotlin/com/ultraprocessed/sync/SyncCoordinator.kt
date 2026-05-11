@@ -3,14 +3,18 @@ package com.ultraprocessed.sync
 import android.content.Context
 import android.util.Log
 import com.ultraprocessed.data.AppDatabase
+import com.ultraprocessed.data.entities.BowelEvent
 import com.ultraprocessed.data.entities.ConsumptionLog
+import com.ultraprocessed.data.entities.DailyCheckin
 import com.ultraprocessed.data.entities.FoodEntry
 import com.ultraprocessed.data.entities.FastingProfile
 import com.ultraprocessed.data.entities.ScheduleType
+import com.ultraprocessed.data.entities.SymptomEvent
 import com.ultraprocessed.data.entities.SyncState
 import com.ultraprocessed.data.repository.ConsumptionRepository
 import com.ultraprocessed.data.repository.FastingRepository
 import com.ultraprocessed.data.repository.FoodRepository
+import com.ultraprocessed.data.repository.IbsRepository
 import com.ultraprocessed.widget.UltraprocessedWidgetUpdater
 import com.ultraprocessed.data.settings.SecretStore
 import com.ultraprocessed.data.settings.Settings
@@ -54,6 +58,7 @@ class SyncCoordinator(
     private val foodRepository: FoodRepository,
     private val consumptionRepository: ConsumptionRepository,
     private val fastingRepository: FastingRepository,
+    private val ibsRepository: IbsRepository,
     private val scope: CoroutineScope
 ) {
     private val mutex = Mutex()
@@ -77,6 +82,19 @@ class SyncCoordinator(
         runCatching { UltraprocessedWidgetUpdater.update(appContext) }
             .onFailure { Log.w(TAG, "widget update failed: ${it.message}") }
         result
+    }
+
+    /**
+     * One-shot read of the server-computed trigger-foods leaderboard.
+     * Returns null if the backend isn't configured; throws on transport
+     * failure so the caller can render an error state.
+     */
+    suspend fun fetchTriggerReport(days: Int = 14, limit: Int = 25): TriggerReportDto? {
+        val baseUrl = settings.backendBaseUrl.first().orEmpty()
+        val token = secrets.backendToken.orEmpty()
+        if (baseUrl.isBlank() || token.isBlank()) return null
+        val client = BackendClient(baseUrl = baseUrl, token = token, client = httpClient)
+        return client.getTriggerReport(days = days, limit = limit).getOrThrow()
     }
 
     private suspend fun runSync(): SyncResult {
@@ -116,6 +134,27 @@ class SyncCoordinator(
                 return SyncResult.Failed(msg)
             }
             markLogsSynced(pendingLogs)
+        }
+
+        // IBS push: bowel/symptom/daily-checkin. Failures here log and
+        // continue — IBS data is non-critical for the rest of sync.
+        val pendingBowels = ibsRepository.pendingBowel()
+        if (pendingBowels.isNotEmpty()) {
+            client.pushBowels(pendingBowels.map { it.toDto() })
+                .onSuccess { markBowelsSynced(pendingBowels) }
+                .onFailure { Log.w(TAG, "bowel push failed: ${it.message}") }
+        }
+        val pendingSymptoms = ibsRepository.pendingSymptoms()
+        if (pendingSymptoms.isNotEmpty()) {
+            client.pushSymptoms(pendingSymptoms.map { it.toDto() })
+                .onSuccess { markSymptomsSynced(pendingSymptoms) }
+                .onFailure { Log.w(TAG, "symptom push failed: ${it.message}") }
+        }
+        val pendingCheckins = ibsRepository.pendingCheckins()
+        if (pendingCheckins.isNotEmpty()) {
+            client.pushDailyCheckins(pendingCheckins.map { it.toDto() })
+                .onSuccess { markCheckinsSynced(pendingCheckins) }
+                .onFailure { Log.w(TAG, "checkin push failed: ${it.message}") }
         }
 
         // Best-effort image upload for any synced food whose JPEG hasn't
@@ -195,6 +234,42 @@ class SyncCoordinator(
             }
         }.onFailure { Log.w(TAG, "fasting pull failed: ${it.message}") }
 
+        // IBS pull: bring down events created from the dashboard or
+        // another phone. Skip rows already present so we don't clobber
+        // pending local edits.
+        client.listBowels(limit = 500).onSuccess { events ->
+            for (dto in events) runCatching {
+                if (ibsRepository.getBowel(dto.clientUuid) == null) {
+                    ibsRepository.logBowel(dto.toEntity().copy(syncState = SyncState.SYNCED))
+                }
+            }.onFailure { Log.w(TAG, "skipping bowel ${dto.clientUuid}: ${it.message}") }
+        }.onFailure { Log.w(TAG, "bowel pull failed: ${it.message}") }
+
+        client.listSymptoms(limit = 500).onSuccess { events ->
+            for (dto in events) runCatching {
+                if (ibsRepository.getSymptom(dto.clientUuid) == null) {
+                    ibsRepository.logSymptom(dto.toEntity().copy(syncState = SyncState.SYNCED))
+                }
+            }.onFailure { Log.w(TAG, "skipping symptom ${dto.clientUuid}: ${it.message}") }
+        }.onFailure { Log.w(TAG, "symptom pull failed: ${it.message}") }
+
+        client.listDailyCheckins(limit = 200).onSuccess { events ->
+            for (dto in events) runCatching {
+                val existing = ibsRepository.getCheckin(dto.day)
+                if (existing == null) {
+                    ibsRepository.saveCheckin(dto.toEntity().copy(syncState = SyncState.SYNCED))
+                } else if (dto.updatedAt.toEpochMs() > existing.updatedAt && existing.syncState == SyncState.SYNCED) {
+                    ibsRepository.saveCheckin(
+                        dto.toEntity().copy(
+                            // preserve PK from local row
+                            clientUuid = existing.clientUuid,
+                            syncState = SyncState.SYNCED
+                        )
+                    )
+                }
+            }.onFailure { Log.w(TAG, "skipping checkin ${dto.day}: ${it.message}") }
+        }.onFailure { Log.w(TAG, "checkin pull failed: ${it.message}") }
+
         Log.i(TAG, "pulled: $newFoods new foods, $newLogs new logs")
         return PullCounts(foods = newFoods, logs = newLogs)
     }
@@ -233,6 +308,18 @@ class SyncCoordinator(
             database.consumptionLogDao().upsert(it.copy(syncState = SyncState.SYNCED))
         }
     }
+
+    private suspend fun markBowelsSynced(rows: List<BowelEvent>) {
+        rows.forEach { ibsRepository.logBowel(it.copy(syncState = SyncState.SYNCED)) }
+    }
+
+    private suspend fun markSymptomsSynced(rows: List<SymptomEvent>) {
+        rows.forEach { ibsRepository.logSymptom(it.copy(syncState = SyncState.SYNCED)) }
+    }
+
+    private suspend fun markCheckinsSynced(rows: List<DailyCheckin>) {
+        rows.forEach { ibsRepository.saveCheckin(it.copy(syncState = SyncState.SYNCED)) }
+    }
 }
 
 sealed class SyncResult {
@@ -269,10 +356,92 @@ private fun FoodEntry.toDto(): FoodEntryDto = FoodEntryDto(
     imageUrl = imageUrl,
     ingredientsJson = ingredientsJson,
     nutrientsJson = nutrientsJson,
+    fodmapLevel = fodmapLevel,
+    fodmapTagsJson = fodmapTagsJson,
+    fodmapNotes = fodmapNotes,
     source = source,
     confidence = confidence,
     createdAt = createdAt.toIso(),
     updatedAt = updatedAt.toIso()
+)
+
+internal fun BowelEvent.toDto(): BowelEventDto = BowelEventDto(
+    clientUuid = clientUuid,
+    occurredAt = occurredAt.toIso(),
+    bristol = bristol,
+    urgency = urgency,
+    completeness = completeness,
+    pain = pain,
+    blood = blood,
+    mucus = mucus,
+    notes = notes,
+    createdAt = createdAt.toIso()
+)
+
+internal fun SymptomEvent.toDto(): SymptomEventDto = SymptomEventDto(
+    clientUuid = clientUuid,
+    occurredAt = occurredAt.toIso(),
+    kind = kind,
+    severity = severity,
+    durationMinutes = durationMinutes,
+    location = location,
+    notes = notes,
+    createdAt = createdAt.toIso()
+)
+
+internal fun DailyCheckin.toDto(): DailyCheckinDto = DailyCheckinDto(
+    clientUuid = clientUuid,
+    day = day,
+    bloatingOverall = bloatingOverall,
+    heartburnOverall = heartburnOverall,
+    gutScore = gutScore,
+    mood = mood,
+    stress = stress,
+    period = period,
+    notes = notes,
+    createdAt = createdAt.toIso(),
+    updatedAt = updatedAt.toIso()
+)
+
+internal fun BowelEventDto.toEntity(): BowelEvent = BowelEvent(
+    clientUuid = clientUuid,
+    occurredAt = occurredAt.toEpochMs(),
+    bristol = bristol,
+    urgency = urgency,
+    completeness = completeness,
+    pain = pain,
+    blood = blood,
+    mucus = mucus,
+    notes = notes,
+    syncState = SyncState.SYNCED,
+    createdAt = createdAt.toEpochMs()
+)
+
+internal fun SymptomEventDto.toEntity(): SymptomEvent = SymptomEvent(
+    clientUuid = clientUuid,
+    occurredAt = occurredAt.toEpochMs(),
+    kind = kind,
+    severity = severity,
+    durationMinutes = durationMinutes,
+    location = location,
+    notes = notes,
+    syncState = SyncState.SYNCED,
+    createdAt = createdAt.toEpochMs()
+)
+
+internal fun DailyCheckinDto.toEntity(): DailyCheckin = DailyCheckin(
+    clientUuid = clientUuid,
+    day = day,
+    bloatingOverall = bloatingOverall,
+    heartburnOverall = heartburnOverall,
+    gutScore = gutScore,
+    mood = mood,
+    stress = stress,
+    period = period,
+    notes = notes,
+    syncState = SyncState.SYNCED,
+    createdAt = createdAt.toEpochMs(),
+    updatedAt = updatedAt.toEpochMs()
 )
 
 private fun ConsumptionLog.toDto(): ConsumptionLogDto = ConsumptionLogDto(
@@ -321,6 +490,9 @@ internal fun FoodEntryDto.toEntity(updatedAtMs: Long): FoodEntry = FoodEntry(
     imageUrl = imageUrl,
     ingredientsJson = ingredientsJson,
     nutrientsJson = nutrientsJson,
+    fodmapLevel = fodmapLevel,
+    fodmapTagsJson = fodmapTagsJson,
+    fodmapNotes = fodmapNotes,
     source = source,
     confidence = confidence,
     createdAt = createdAt.toEpochMs(),

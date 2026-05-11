@@ -7,10 +7,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.ultraprocessed.theme.Semantic
+import com.ultraprocessed.ui.food.FoodDetailScreen
+import com.ultraprocessed.ui.food.FoodDetailViewModel
+import com.ultraprocessed.ui.gut.GutScreen
 import com.ultraprocessed.ui.help.HelpScreen
 import com.ultraprocessed.ui.home.HomeScreen
 import com.ultraprocessed.ui.pairing.PairingScanScreen
@@ -39,6 +44,7 @@ fun UltraprocessedApp(
             "search" -> navController.navigate(Routes.Search)
             "settings" -> navController.navigate(Routes.Settings)
             "places" -> navController.navigate(Routes.Places)
+            "gut" -> navController.navigate(Routes.Gut)
             // "home" or null - already at start destination.
             else -> Unit
         }
@@ -59,7 +65,8 @@ fun UltraprocessedApp(
                     onScanTap = { navController.navigate(Routes.Scan) },
                     onSearchTap = { navController.navigate(Routes.Search) },
                     onOpenSettings = { navController.navigate(Routes.Settings) },
-                    onOpenPlaces = { navController.navigate(Routes.Places) }
+                    onOpenPlaces = { navController.navigate(Routes.Places) },
+                    onOpenGut = { navController.navigate(Routes.Gut) }
                 )
             }
             composable(Routes.Search) {
@@ -105,6 +112,24 @@ fun UltraprocessedApp(
             }
             composable(Routes.Places) {
                 PlacesScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.Gut) {
+                GutScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenFood = { uuid -> navController.navigate(Routes.foodDetail(uuid)) }
+                )
+            }
+            composable(
+                route = Routes.FoodDetail,
+                arguments = listOf(navArgument("foodUuid") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val uuid = backStackEntry.arguments?.getString(FoodDetailViewModel.ARG_FOOD_UUID)
+                    ?: backStackEntry.arguments?.getString("foodUuid")
+                    ?: ""
+                FoodDetailScreen(
+                    foodUuid = uuid,
+                    onBack = { navController.popBackStack() }
+                )
             }
         }
     }

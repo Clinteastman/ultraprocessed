@@ -14,7 +14,17 @@ from sqlmodel import Session, select
 from app.api.v1.fasting import compute_window
 from app.auth import get_current_user
 from app.db import get_session
-from app.models import ConsumptionLog, FastingProfile, FoodEntry, User, UserTargets
+from app.models import (
+    BowelEvent,
+    ConsumptionLog,
+    DailyCheckin,
+    FastingProfile,
+    FoodEntry,
+    SymptomEvent,
+    SymptomKind,
+    User,
+    UserTargets,
+)
 from app.services.nutrients import REFERENCE_DAILY_VALUES, aggregate_nutrients
 
 router = APIRouter(prefix="/ha", tags=["ha"])
@@ -66,6 +76,23 @@ class HaSnapshot(BaseModel):
     # Nutrients (full set; HA exposes one sensor per key).
     nutrients_today: dict[str, float]
     nutrients_reference: dict[str, float]
+
+    # ---- IBS / gut state ----
+    bowel_count_today: int
+    last_bowel_at: datetime | None
+    minutes_since_last_bowel: float | None
+    last_bristol: int | None
+    bristol_average_today: float | None
+    bowel_flares_today: int  # bristol in {1,2,6,7} OR urgency>=2 OR pain>=2
+    symptom_count_today: int
+    symptom_severity_max_today: int
+    last_symptom_kind: str | None
+    last_symptom_at: datetime | None
+    minutes_since_last_symptom: float | None
+    bloating_today: int
+    heartburn_today: int
+    gut_score_today: int | None
+    period_today: bool
 
 
 @router.get("/snapshot", response_model=HaSnapshot)
@@ -189,6 +216,82 @@ def snapshot(
         )
 
     nutrients_today = aggregate_nutrients(logs)
+
+    # ---- IBS / gut state ----
+    bowel_today_rows = session.exec(
+        select(BowelEvent)
+        .where(BowelEvent.user_id == user.id)
+        .where(BowelEvent.occurred_at >= start)
+        .where(BowelEvent.occurred_at <= end)
+    ).all()
+    last_bowel = session.exec(
+        select(BowelEvent)
+        .where(BowelEvent.user_id == user.id)
+        .order_by(BowelEvent.occurred_at.desc())
+        .limit(1)
+    ).first()
+    last_bowel_at: datetime | None = None
+    minutes_since_last_bowel: float | None = None
+    last_bristol: int | None = None
+    if last_bowel is not None:
+        last_bowel_at = last_bowel.occurred_at
+        if last_bowel_at.tzinfo is None:
+            last_bowel_at = last_bowel_at.replace(tzinfo=timezone.utc)
+        minutes_since_last_bowel = round((now - last_bowel_at).total_seconds() / 60.0, 1)
+        last_bristol = last_bowel.bristol
+    bristol_average_today = (
+        round(sum(b.bristol for b in bowel_today_rows) / len(bowel_today_rows), 2)
+        if bowel_today_rows
+        else None
+    )
+    bowel_flares_today = sum(
+        1 for b in bowel_today_rows
+        if b.bristol in (1, 2, 6, 7) or b.urgency >= 2 or b.pain >= 2
+    )
+
+    symptom_today_rows = session.exec(
+        select(SymptomEvent)
+        .where(SymptomEvent.user_id == user.id)
+        .where(SymptomEvent.occurred_at >= start)
+        .where(SymptomEvent.occurred_at <= end)
+    ).all()
+    last_symptom = session.exec(
+        select(SymptomEvent)
+        .where(SymptomEvent.user_id == user.id)
+        .order_by(SymptomEvent.occurred_at.desc())
+        .limit(1)
+    ).first()
+    last_symptom_kind: str | None = None
+    last_symptom_at: datetime | None = None
+    minutes_since_last_symptom: float | None = None
+    if last_symptom is not None:
+        last_symptom_kind = last_symptom.kind.value
+        last_symptom_at = last_symptom.occurred_at
+        if last_symptom_at.tzinfo is None:
+            last_symptom_at = last_symptom_at.replace(tzinfo=timezone.utc)
+        minutes_since_last_symptom = round((now - last_symptom_at).total_seconds() / 60.0, 1)
+    symptom_severity_max = max((s.severity for s in symptom_today_rows), default=0)
+
+    today_iso = now.date().isoformat()
+    checkin = session.exec(
+        select(DailyCheckin)
+        .where(DailyCheckin.user_id == user.id)
+        .where(DailyCheckin.day == today_iso)
+    ).first()
+
+    # If no daily check-in yet, fall back to the worst symptom of that
+    # kind logged today so the sensors aren't always zero.
+    bloating_today = checkin.bloating_overall if checkin else max(
+        (s.severity for s in symptom_today_rows if s.kind == SymptomKind.BLOATING),
+        default=0,
+    )
+    heartburn_today = checkin.heartburn_overall if checkin else max(
+        (s.severity for s in symptom_today_rows if s.kind == SymptomKind.HEARTBURN),
+        default=0,
+    )
+    gut_score_today = checkin.gut_score if checkin else None
+    period_today = checkin.period if checkin else False
+
     return HaSnapshot(
         calories_today=round(calories_today, 1),
         calorie_target_kcal=round(target_kcal, 1),
@@ -208,4 +311,19 @@ def snapshot(
         active_fasting_profile=profile_snapshot,
         nutrients_today=nutrients_today,
         nutrients_reference=REFERENCE_DAILY_VALUES,
+        bowel_count_today=len(bowel_today_rows),
+        last_bowel_at=last_bowel_at,
+        minutes_since_last_bowel=minutes_since_last_bowel,
+        last_bristol=last_bristol,
+        bristol_average_today=bristol_average_today,
+        bowel_flares_today=bowel_flares_today,
+        symptom_count_today=len(symptom_today_rows),
+        symptom_severity_max_today=symptom_severity_max,
+        last_symptom_kind=last_symptom_kind,
+        last_symptom_at=last_symptom_at,
+        minutes_since_last_symptom=minutes_since_last_symptom,
+        bloating_today=bloating_today,
+        heartburn_today=heartburn_today,
+        gut_score_today=gut_score_today,
+        period_today=period_today,
     )

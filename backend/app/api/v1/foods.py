@@ -1,6 +1,7 @@
 """FoodEntry CRUD + bulk upsert for sync."""
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -9,7 +10,8 @@ from sqlmodel import Session, select
 
 from app.auth import get_current_user
 from app.db import get_session
-from app.models import FoodEntry, FoodSource, User
+from app.models import FodmapLevel, FoodEntry, FoodSource, User
+from app.services import fodmap as fodmap_svc
 
 router = APIRouter(prefix="/foods", tags=["foods"])
 
@@ -31,6 +33,9 @@ class FoodEntryDto(BaseModel):
     image_url: str | None = None
     ingredients_json: str = "[]"
     nutrients_json: str | None = None
+    fodmap_level: FodmapLevel = FodmapLevel.UNKNOWN
+    fodmap_tags_json: str = "[]"
+    fodmap_notes: str | None = None
     source: FoodSource
     confidence: float = 1.0
     created_at: datetime
@@ -53,11 +58,37 @@ class FoodEntryDto(BaseModel):
             image_url=self.image_url,
             ingredients_json=self.ingredients_json,
             nutrients_json=self.nutrients_json,
+            fodmap_level=self.fodmap_level,
+            fodmap_tags_json=self.fodmap_tags_json,
+            fodmap_notes=self.fodmap_notes,
             source=self.source,
             confidence=self.confidence,
             created_at=self.created_at,
             updated_at=self.updated_at,
         )
+
+
+class FodmapPatchDto(BaseModel):
+    """User-driven correction to a food's FODMAP classification."""
+    fodmap_level: FodmapLevel
+    fodmap_tags: list[str] = []
+    fodmap_notes: str | None = None
+
+
+def _auto_classify(dto: FoodEntryDto) -> tuple[FodmapLevel, str]:
+    """If the client didn't supply FODMAP info, classify from the name +
+    ingredients. Returns (level, tags_json). Never overrides explicit
+    client input — UNKNOWN with empty tags means 'please classify me'."""
+    if dto.fodmap_level != FodmapLevel.UNKNOWN or dto.fodmap_tags_json not in (None, "", "[]"):
+        return dto.fodmap_level, dto.fodmap_tags_json
+    try:
+        ingredients = json.loads(dto.ingredients_json) if dto.ingredients_json else []
+    except json.JSONDecodeError:
+        ingredients = []
+    if not isinstance(ingredients, list):
+        ingredients = []
+    classification = fodmap_svc.classify(dto.name, [str(i) for i in ingredients])
+    return classification.level, json.dumps(classification.tags)
 
 
 @router.post("", response_model=list[FoodEntryDto])
@@ -71,11 +102,17 @@ def upsert_foods(
 
     saved: list[FoodEntry] = []
     for dto in payload:
+        # Auto-classify FODMAP if the client didn't provide it. Cheap
+        # keyword match; users can correct via PATCH /foods/{uuid}/fodmap.
+        auto_level, auto_tags_json = _auto_classify(dto)
+
         existing = session.exec(
             select(FoodEntry).where(FoodEntry.client_uuid == dto.client_uuid)
         ).first()
         if existing is None:
             row = dto.to_model(user.id)
+            row.fodmap_level = auto_level
+            row.fodmap_tags_json = auto_tags_json
             session.add(row)
             saved.append(row)
         else:
@@ -96,6 +133,16 @@ def upsert_foods(
                 existing.image_url = dto.image_url
                 existing.ingredients_json = dto.ingredients_json
                 existing.nutrients_json = dto.nutrients_json
+                # Don't clobber a user-corrected FODMAP entry with an
+                # auto-classified UNKNOWN. Only overwrite when the
+                # incoming DTO actually carries FODMAP info.
+                if dto.fodmap_level != FodmapLevel.UNKNOWN or dto.fodmap_tags_json not in (None, "", "[]"):
+                    existing.fodmap_level = dto.fodmap_level
+                    existing.fodmap_tags_json = dto.fodmap_tags_json
+                    existing.fodmap_notes = dto.fodmap_notes
+                elif existing.fodmap_level == FodmapLevel.UNKNOWN:
+                    existing.fodmap_level = auto_level
+                    existing.fodmap_tags_json = auto_tags_json
                 existing.source = dto.source
                 existing.confidence = dto.confidence
                 existing.updated_at = dto.updated_at
@@ -154,6 +201,30 @@ def delete_food(
     session.commit()
 
 
+@router.patch("/by-uuid/{client_uuid}/fodmap", response_model=FoodEntryDto)
+def patch_fodmap(
+    client_uuid: str,
+    payload: FodmapPatchDto,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> FoodEntryDto:
+    row = session.exec(
+        select(FoodEntry)
+        .where(FoodEntry.client_uuid == client_uuid)
+        .where(FoodEntry.user_id == user.id)
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    row.fodmap_level = payload.fodmap_level
+    row.fodmap_tags_json = json.dumps(sorted({t.lower() for t in payload.fodmap_tags if t}))
+    row.fodmap_notes = payload.fodmap_notes
+    row.updated_at = datetime.now(timezone.utc)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return _to_dto(row)
+
+
 def _to_dto(row: FoodEntry) -> FoodEntryDto:
     return FoodEntryDto(
         client_uuid=row.client_uuid,
@@ -170,6 +241,9 @@ def _to_dto(row: FoodEntry) -> FoodEntryDto:
         image_url=row.image_url,
         ingredients_json=row.ingredients_json,
         nutrients_json=row.nutrients_json,
+        fodmap_level=row.fodmap_level,
+        fodmap_tags_json=row.fodmap_tags_json,
+        fodmap_notes=row.fodmap_notes,
         source=row.source,
         confidence=row.confidence,
         created_at=row.created_at,

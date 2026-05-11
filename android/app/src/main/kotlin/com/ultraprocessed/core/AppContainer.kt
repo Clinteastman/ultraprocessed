@@ -7,6 +7,7 @@ import com.ultraprocessed.openfoodfacts.OpenFoodFactsClient
 import com.ultraprocessed.data.repository.ConsumptionRepository
 import com.ultraprocessed.data.repository.FastingRepository
 import com.ultraprocessed.data.repository.FoodRepository
+import com.ultraprocessed.data.repository.IbsRepository
 import com.ultraprocessed.data.settings.SecretStore
 import com.ultraprocessed.data.settings.Settings
 import io.ktor.client.HttpClient
@@ -36,6 +37,13 @@ class AppContainer(applicationContext: Context) {
     val fastingRepository: FastingRepository by lazy {
         FastingRepository(database.fastingProfileDao())
     }
+    val ibsRepository: IbsRepository by lazy {
+        IbsRepository(
+            bowelDao = database.bowelEventDao(),
+            symptomDao = database.symptomEventDao(),
+            checkinDao = database.dailyCheckinDao()
+        )
+    }
 
     val settings: Settings by lazy { Settings(applicationContext) }
     val secrets: SecretStore by lazy { SecretStore(applicationContext) }
@@ -58,6 +66,7 @@ class AppContainer(applicationContext: Context) {
             foodRepository = foodRepository,
             consumptionRepository = consumptionRepository,
             fastingRepository = fastingRepository,
+            ibsRepository = ibsRepository,
             scope = applicationScope
         )
     }

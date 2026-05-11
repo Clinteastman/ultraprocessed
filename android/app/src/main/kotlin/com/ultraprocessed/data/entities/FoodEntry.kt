@@ -62,6 +62,21 @@ data class FoodEntry(
     @ColumnInfo(name = "nutrients_json")
     val nutrientsJson: String? = null,
 
+    /**
+     * IBS / FODMAP tagging. [fodmapLevel] is the headline rollup; tags
+     * are a JSON array of fine-grained category strings ("fructans",
+     * "lactose", "polyols", "gos", "fructose"). Set by the backend's
+     * analyzer at scan time, editable from the food detail page.
+     */
+    @ColumnInfo(name = "fodmap_level")
+    val fodmapLevel: FodmapLevel = FodmapLevel.UNKNOWN,
+
+    @ColumnInfo(name = "fodmap_tags_json")
+    val fodmapTagsJson: String = "[]",
+
+    @ColumnInfo(name = "fodmap_notes")
+    val fodmapNotes: String? = null,
+
     val source: FoodSource,
     val confidence: Double = 1.0,
 

@@ -37,6 +37,25 @@ class ScheduleType(str, Enum):
     CUSTOM = "CUSTOM"
 
 
+class SymptomKind(str, Enum):
+    BLOATING = "BLOATING"
+    HEARTBURN = "HEARTBURN"
+    CRAMPING = "CRAMPING"
+    GAS = "GAS"
+    NAUSEA = "NAUSEA"
+    URGENCY = "URGENCY"
+    FATIGUE = "FATIGUE"
+    PAIN = "PAIN"
+    OTHER = "OTHER"
+
+
+class FodmapLevel(str, Enum):
+    UNKNOWN = "UNKNOWN"
+    LOW = "LOW"
+    MODERATE = "MODERATE"
+    HIGH = "HIGH"
+
+
 # ---- Auth ----
 
 class User(SQLModel, table=True):
@@ -83,6 +102,15 @@ class FoodEntry(SQLModel, table=True):
     image_url: str | None = None
     ingredients_json: str = "[]"
     nutrients_json: str | None = None
+
+    # IBS / FODMAP tagging. fodmap_level is the headline rollup
+    # ("HIGH" / "MODERATE" / "LOW" / "UNKNOWN"); fodmap_tags_json is a
+    # JSON array of fine-grained category tags such as
+    # ["fructans", "lactose", "polyols", "gos", "fructose"]. Set by the
+    # analyzer at scan time, editable by the user.
+    fodmap_level: FodmapLevel = FodmapLevel.UNKNOWN
+    fodmap_tags_json: str = "[]"
+    fodmap_notes: str | None = None
 
     source: FoodSource
     confidence: float = 1.0
@@ -142,6 +170,78 @@ class UserTargets(SQLModel, table=True):
 
     user_id: int = Field(foreign_key="users.id", primary_key=True)
     calorie_target_kcal: float = 2000.0
+
+
+# ---- IBS tracking ----
+#
+# Three event tables, all keyed off `client_uuid` for idempotent device
+# sync just like ConsumptionLog. Severity scales are deliberately small
+# (0-3) so logging is one-tap on the phone:
+#   0 = none, 1 = mild, 2 = moderate, 3 = severe.
+# Bristol Stool Scale uses its canonical 1-7 (1 = pellets, 7 = liquid).
+
+class BowelEvent(SQLModel, table=True):
+    """A single bathroom visit. Kept separate from SymptomEvent because
+    the schema is bowel-specific (Bristol scale, blood/mucus flags) and
+    these are the highest-volume events we expect."""
+    __tablename__ = "bowel_events"
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    client_uuid: str = Field(index=True, unique=True)
+
+    occurred_at: datetime = Field(index=True)
+    bristol: int  # 1..7
+    urgency: int = 0  # 0..3
+    completeness: int = 2  # 0=incomplete, 1=partial, 2=complete
+    pain: int = 0  # 0..3 - pain *during* the event
+    blood: bool = False
+    mucus: bool = False
+    notes: str | None = None
+
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class SymptomEvent(SQLModel, table=True):
+    """Bloating, heartburn, gas, cramping, etc. One row per discrete
+    onset; if a symptom lingers, set duration_minutes."""
+    __tablename__ = "symptom_events"
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    client_uuid: str = Field(index=True, unique=True)
+
+    occurred_at: datetime = Field(index=True)
+    kind: SymptomKind
+    severity: int  # 0..3
+    duration_minutes: int | None = None
+    location: str | None = None  # free-text for pain (upper/lower abdomen, throat, etc.)
+    notes: str | None = None
+
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class DailyCheckin(SQLModel, table=True):
+    """End-of-day rollup. One row per (user_id, day) — the day field is
+    a date stored as ISO 'YYYY-MM-DD' so timezone changes don't merge
+    rows across boundaries."""
+    __tablename__ = "daily_checkins"
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    client_uuid: str = Field(index=True, unique=True)
+
+    day: str = Field(index=True)  # 'YYYY-MM-DD' in user's local TZ
+    bloating_overall: int = 0  # 0..3
+    heartburn_overall: int = 0  # 0..3
+    gut_score: int | None = None  # 1..10 self-rated
+    mood: int | None = None  # 0..3
+    stress: int | None = None  # 0..3
+    period: bool = False  # menstrual cycle flag (known IBS modifier)
+    notes: str | None = None
+
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 
 # ---- Open Food Facts cache ----

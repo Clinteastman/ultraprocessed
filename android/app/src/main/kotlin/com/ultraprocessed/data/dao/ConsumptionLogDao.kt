@@ -69,6 +69,26 @@ interface ConsumptionLogDao {
     )
     fun observeLocated(limit: Int = 1000): Flow<List<ConsumptionWithFood>>
 
+    @Query(
+        """
+        SELECT * FROM consumption_log
+        WHERE food_client_uuid = :foodUuid
+        ORDER BY eaten_at DESC
+        LIMIT :limit
+        """
+    )
+    fun observeByFood(foodUuid: String, limit: Int = 200): Flow<List<ConsumptionLog>>
+
+    @Transaction
+    @Query(
+        """
+        SELECT * FROM consumption_log
+        WHERE eaten_at BETWEEN :fromMs AND :toMs
+        ORDER BY eaten_at ASC
+        """
+    )
+    suspend fun consumptionInRange(fromMs: Long, toMs: Long): List<ConsumptionWithFood>
+
     @Query("SELECT * FROM consumption_log WHERE sync_state = :state")
     suspend fun pending(state: SyncState = SyncState.PENDING): List<ConsumptionLog>
 

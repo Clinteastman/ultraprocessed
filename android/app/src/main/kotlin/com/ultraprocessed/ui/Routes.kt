@@ -9,4 +9,7 @@ object Routes {
     const val PairingScan = "pairing-scan"
     const val Help = "help"
     const val Places = "places"
+    const val Gut = "gut"
+    const val FoodDetail = "food/{foodUuid}"
+    fun foodDetail(uuid: String): String = "food/$uuid"
 }

@@ -18,6 +18,12 @@ class ConsumptionRepository(private val dao: ConsumptionLogDao) {
     fun observeLocated(limit: Int = 1000): Flow<List<ConsumptionWithFood>> =
         dao.observeLocated(limit)
 
+    fun observeByFood(foodUuid: String, limit: Int = 200): Flow<List<ConsumptionLog>> =
+        dao.observeByFood(foodUuid, limit)
+
+    suspend fun consumptionInRange(fromMs: Long, toMs: Long): List<ConsumptionWithFood> =
+        dao.consumptionInRange(fromMs, toMs)
+
     fun observeKcalSumInRange(fromMs: Long, toMs: Long): Flow<Double> =
         dao.observeKcalSumInRange(fromMs, toMs)
 

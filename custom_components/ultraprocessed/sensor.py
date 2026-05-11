@@ -66,6 +66,25 @@ async def async_setup_entry(
     for ndef in NUTRIENT_DEFS:
         entities.append(NutrientSensor(coordinator, entry, ndef))
 
+    # IBS / gut sensors. All enabled by default — if a user installed the
+    # integration *and* uses IBS tracking they want these.
+    entities.extend([
+        BowelCountTodaySensor(coordinator, entry),
+        BowelFlaresTodaySensor(coordinator, entry),
+        LastBowelAtSensor(coordinator, entry),
+        MinutesSinceLastBowelSensor(coordinator, entry),
+        LastBristolSensor(coordinator, entry),
+        BristolAverageTodaySensor(coordinator, entry),
+        SymptomCountTodaySensor(coordinator, entry),
+        SymptomSeverityMaxTodaySensor(coordinator, entry),
+        LastSymptomKindSensor(coordinator, entry),
+        LastSymptomAtSensor(coordinator, entry),
+        MinutesSinceLastSymptomSensor(coordinator, entry),
+        BloatingTodaySensor(coordinator, entry),
+        HeartburnTodaySensor(coordinator, entry),
+        GutScoreTodaySensor(coordinator, entry),
+    ])
+
     async_add_entities(entities)
 
 
@@ -370,6 +389,193 @@ class NutrientSensor(_Base):
             "reference_daily_value": ref,
             "percent_rdv": pct,
         }
+
+
+# ---- IBS / gut sensors --------------------------------------------------
+
+
+class BowelCountTodaySensor(_Base):
+    _attr_name = "Bowel events today"
+    _attr_icon = "mdi:toilet"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "bowel_count_today")
+
+    @property
+    def native_value(self) -> int | None:
+        return self._data.get("bowel_count_today")
+
+
+class BowelFlaresTodaySensor(_Base):
+    _attr_name = "Bowel flares today"
+    _attr_icon = "mdi:alert-circle-outline"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "bowel_flares_today")
+
+    @property
+    def native_value(self) -> int | None:
+        return self._data.get("bowel_flares_today")
+
+
+class LastBowelAtSensor(_Base):
+    _attr_name = "Last bowel at"
+    _attr_icon = "mdi:clock-outline"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "last_bowel_at")
+
+    @property
+    def native_value(self) -> datetime | None:
+        return _parse_iso(self._data.get("last_bowel_at"))
+
+
+class MinutesSinceLastBowelSensor(_Base):
+    _attr_name = "Minutes since last bowel"
+    _attr_native_unit_of_measurement = "min"
+    _attr_icon = "mdi:timer-outline"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "minutes_since_last_bowel")
+
+    @property
+    def native_value(self) -> float | None:
+        return self._data.get("minutes_since_last_bowel")
+
+
+class LastBristolSensor(_Base):
+    _attr_name = "Last Bristol score"
+    _attr_icon = "mdi:numeric"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "last_bristol")
+
+    @property
+    def native_value(self) -> int | None:
+        return self._data.get("last_bristol")
+
+
+class BristolAverageTodaySensor(_Base):
+    _attr_name = "Bristol average today"
+    _attr_icon = "mdi:chart-bell-curve"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "bristol_average_today")
+
+    @property
+    def native_value(self) -> float | None:
+        return self._data.get("bristol_average_today")
+
+
+class SymptomCountTodaySensor(_Base):
+    _attr_name = "Symptoms today"
+    _attr_icon = "mdi:emoticon-sad-outline"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "symptom_count_today")
+
+    @property
+    def native_value(self) -> int | None:
+        return self._data.get("symptom_count_today")
+
+
+class SymptomSeverityMaxTodaySensor(_Base):
+    _attr_name = "Worst symptom today"
+    _attr_icon = "mdi:gauge"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "symptom_severity_max_today")
+
+    @property
+    def native_value(self) -> int | None:
+        return self._data.get("symptom_severity_max_today")
+
+
+class LastSymptomKindSensor(_Base):
+    _attr_name = "Last symptom"
+    _attr_icon = "mdi:label-outline"
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "last_symptom_kind")
+
+    @property
+    def native_value(self) -> str | None:
+        return self._data.get("last_symptom_kind")
+
+
+class LastSymptomAtSensor(_Base):
+    _attr_name = "Last symptom at"
+    _attr_icon = "mdi:clock-outline"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "last_symptom_at")
+
+    @property
+    def native_value(self) -> datetime | None:
+        return _parse_iso(self._data.get("last_symptom_at"))
+
+
+class MinutesSinceLastSymptomSensor(_Base):
+    _attr_name = "Minutes since last symptom"
+    _attr_native_unit_of_measurement = "min"
+    _attr_icon = "mdi:timer-outline"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "minutes_since_last_symptom")
+
+    @property
+    def native_value(self) -> float | None:
+        return self._data.get("minutes_since_last_symptom")
+
+
+class BloatingTodaySensor(_Base):
+    _attr_name = "Bloating today"
+    _attr_icon = "mdi:weather-windy"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "bloating_today")
+
+    @property
+    def native_value(self) -> int | None:
+        return self._data.get("bloating_today")
+
+
+class HeartburnTodaySensor(_Base):
+    _attr_name = "Heartburn today"
+    _attr_icon = "mdi:fire"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "heartburn_today")
+
+    @property
+    def native_value(self) -> int | None:
+        return self._data.get("heartburn_today")
+
+
+class GutScoreTodaySensor(_Base):
+    _attr_name = "Gut score today"
+    _attr_icon = "mdi:emoticon-happy-outline"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "gut_score_today")
+
+    @property
+    def native_value(self) -> int | None:
+        return self._data.get("gut_score_today")
 
 
 # ---- Helpers ------------------------------------------------------------

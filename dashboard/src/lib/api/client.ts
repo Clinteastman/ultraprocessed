@@ -1,8 +1,14 @@
 import type {
   AggregateResponse,
+  BowelEventDto,
   ConsumptionLogDto,
+  DailyCheckinDto,
+  FodmapLevel,
   FoodEntryDto,
-  HaSnapshot
+  HaSnapshot,
+  SymptomEventDto,
+  SymptomKind,
+  TriggerReportDto
 } from "./types";
 
 const STORAGE_KEY_TOKEN = "ultraprocessed.token";
@@ -101,7 +107,78 @@ export const api = {
       body: JSON.stringify(p)
     }),
   getFood: (clientUuid: string) =>
-    request<FoodEntryDto>(`/api/v1/foods/by-uuid/${encodeURIComponent(clientUuid)}`)
+    request<FoodEntryDto>(`/api/v1/foods/by-uuid/${encodeURIComponent(clientUuid)}`),
+  patchFodmap: (
+    clientUuid: string,
+    payload: { fodmap_level: FodmapLevel; fodmap_tags: string[]; fodmap_notes: string | null }
+  ) =>
+    request<FoodEntryDto>(`/api/v1/foods/by-uuid/${encodeURIComponent(clientUuid)}/fodmap`, {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }),
+
+  // ---- IBS ----
+  bowels: (from?: string, to?: string, limit = 1000) => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    params.set("limit", String(limit));
+    return request<BowelEventDto[]>(`/api/v1/ibs/bowel?${params}`);
+  },
+  upsertBowels: (events: BowelEventDto[]) =>
+    request<BowelEventDto[]>("/api/v1/ibs/bowel", {
+      method: "POST",
+      body: JSON.stringify(events)
+    }),
+  deleteBowel: (clientUuid: string) =>
+    fetch(`/api/v1/ibs/bowel/${encodeURIComponent(clientUuid)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${getToken()}` }
+    }).then((r) => {
+      if (!r.ok) throw new ApiError(r.status, "");
+    }),
+  symptoms: (from?: string, to?: string, kind?: SymptomKind, limit = 1000) => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    if (kind) params.set("kind", kind);
+    params.set("limit", String(limit));
+    return request<SymptomEventDto[]>(`/api/v1/ibs/symptoms?${params}`);
+  },
+  upsertSymptoms: (events: SymptomEventDto[]) =>
+    request<SymptomEventDto[]>("/api/v1/ibs/symptoms", {
+      method: "POST",
+      body: JSON.stringify(events)
+    }),
+  deleteSymptom: (clientUuid: string) =>
+    fetch(`/api/v1/ibs/symptoms/${encodeURIComponent(clientUuid)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${getToken()}` }
+    }).then((r) => {
+      if (!r.ok) throw new ApiError(r.status, "");
+    }),
+  dailyCheckins: (from?: string, to?: string, limit = 400) => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    params.set("limit", String(limit));
+    return request<DailyCheckinDto[]>(`/api/v1/ibs/daily?${params}`);
+  },
+  upsertDaily: (events: DailyCheckinDto[]) =>
+    request<DailyCheckinDto[]>("/api/v1/ibs/daily", {
+      method: "POST",
+      body: JSON.stringify(events)
+    }),
+  triggerReport: (params?: { days?: number; lookback_hours?: number; half_life_hours?: number; severity_threshold?: number; limit?: number }) => {
+    const sp = new URLSearchParams();
+    if (params?.days != null) sp.set("days", String(params.days));
+    if (params?.lookback_hours != null) sp.set("lookback_hours", String(params.lookback_hours));
+    if (params?.half_life_hours != null) sp.set("half_life_hours", String(params.half_life_hours));
+    if (params?.severity_threshold != null) sp.set("severity_threshold", String(params.severity_threshold));
+    if (params?.limit != null) sp.set("limit", String(params.limit));
+    const qs = sp.toString();
+    return request<TriggerReportDto>(`/api/v1/ibs/triggers${qs ? "?" + qs : ""}`);
+  }
 };
 
 export interface FastingProfileDto {

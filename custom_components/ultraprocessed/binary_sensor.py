@@ -25,7 +25,10 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: UltraprocessedCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([FastingBinarySensor(coordinator, entry)])
+    async_add_entities([
+        FastingBinarySensor(coordinator, entry),
+        PeriodTodayBinarySensor(coordinator, entry),
+    ])
 
 
 class FastingBinarySensor(CoordinatorEntity[UltraprocessedCoordinator], BinarySensorEntity):
@@ -58,3 +61,30 @@ class FastingBinarySensor(CoordinatorEntity[UltraprocessedCoordinator], BinarySe
             "next_eat_at": data.get("next_eat_at"),
             "eating_window_closes_at": data.get("eating_window_closes_at"),
         }
+
+
+class PeriodTodayBinarySensor(CoordinatorEntity[UltraprocessedCoordinator], BinarySensorEntity):
+    """On when the daily check-in for today flagged a menstrual period.
+    Useful as a confounder filter in trigger-detection automations."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Period today"
+    _attr_icon = "mdi:calendar-heart"
+    _attr_entity_registry_enabled_default = False  # opt-in
+
+    def __init__(self, coordinator: UltraprocessedCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_period_today"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name="Ultraprocessed",
+            manufacturer="Ultraprocessed",
+            model="Self-hosted backend",
+            configuration_url=coordinator.base_url,
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        data = self.coordinator.data or {}
+        return bool(data.get("period_today"))

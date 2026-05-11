@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Search
@@ -84,7 +85,8 @@ fun HomeScreen(
     onScanTap: () -> Unit,
     onSearchTap: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenPlaces: () -> Unit = {}
+    onOpenPlaces: () -> Unit = {},
+    onOpenGut: () -> Unit = {}
 ) {
     val vm: HomeViewModel = viewModel(factory = HomeViewModel.Factory)
     val selected by vm.selected.collectAsState()
@@ -169,6 +171,24 @@ fun HomeScreen(
                             )
                             Spacer(Modifier.size(Tokens.Space.s2))
                         }
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(Semantic.colors.surface1)
+                                .clickable(onClick = onOpenGut),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            // Use a built-in icon as a quick stand-in; the
+                            // app theme can swap this for a custom asset
+                            // later. "Healing" reads visually as a torso.
+                            Icon(
+                                imageVector = Icons.Default.Favorite,
+                                contentDescription = "Gut tracker",
+                                tint = Semantic.colors.inkHigh
+                            )
+                        }
+                        Spacer(Modifier.size(Tokens.Space.s2))
                         Box(
                             modifier = Modifier
                                 .size(40.dp)

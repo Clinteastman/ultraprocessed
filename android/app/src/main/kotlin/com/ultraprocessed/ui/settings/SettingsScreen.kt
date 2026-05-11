@@ -17,7 +17,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -313,28 +315,47 @@ private fun ProviderSwitch(
     selected: ProviderType,
     onChange: (ProviderType) -> Unit
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(Tokens.Radius.md))
             .background(Semantic.colors.surface1)
-            .padding(Tokens.Space.s1)
+            .padding(Tokens.Space.s1),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         ProviderType.entries.forEach { p ->
             val isActive = p == selected
-            Box(
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .weight(1f)
-                    .height(44.dp)
+                    .fillMaxWidth()
                     .clip(RoundedCornerShape(Tokens.Radius.sm))
-                    .background(if (isActive) Semantic.colors.accent else Semantic.colors.surface1)
-                    .clickable { onChange(p) },
-                contentAlignment = Alignment.Center
+                    .background(if (isActive) Semantic.colors.accent.copy(alpha = 0.18f) else Semantic.colors.surface1)
+                    .clickable { onChange(p) }
+                    .padding(horizontal = Tokens.Space.s3, vertical = Tokens.Space.s3)
             ) {
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(if (isActive) Semantic.colors.accent else Semantic.colors.surface3),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isActive) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(Semantic.colors.inkInverse)
+                        )
+                    }
+                }
+                Spacer(Modifier.width(Tokens.Space.s3))
                 Text(
                     text = p.displayName,
-                    color = if (isActive) Semantic.colors.inkInverse else Semantic.colors.inkMid,
-                    style = MaterialTheme.typography.bodyMedium
+                    color = if (isActive) Semantic.colors.inkHigh else Semantic.colors.inkMid,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1
                 )
             }
         }

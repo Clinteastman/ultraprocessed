@@ -46,3 +46,31 @@ enum class ScheduleType {
     ADF,
     CUSTOM
 }
+
+/**
+ * IBS symptom kind for SymptomEvent. Mirrors the backend's SymptomKind
+ * enum; serialised over the wire as the enum name.
+ */
+enum class SymptomKind {
+    BLOATING,
+    HEARTBURN,
+    CRAMPING,
+    GAS,
+    NAUSEA,
+    URGENCY,
+    FATIGUE,
+    PAIN,
+    OTHER
+}
+
+/**
+ * Headline FODMAP rollup for a food. Set by the backend's analyzer at
+ * scan time; users can correct it from the food page. UNKNOWN means
+ * the analyzer didn't have enough info to decide.
+ */
+enum class FodmapLevel {
+    UNKNOWN,
+    LOW,
+    MODERATE,
+    HIGH
+}

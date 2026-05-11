@@ -51,6 +51,9 @@ def _ensure_evolved_columns() -> None:
         "food_entries": [
             ("grams_per_unit", "REAL"),
             ("package_grams", "REAL"),
+            ("fodmap_level", "TEXT NOT NULL DEFAULT 'UNKNOWN'"),
+            ("fodmap_tags_json", "TEXT NOT NULL DEFAULT '[]'"),
+            ("fodmap_notes", "TEXT"),
         ],
         "consumption_logs": [
             ("grams_eaten", "REAL"),

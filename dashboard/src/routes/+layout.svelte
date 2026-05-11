@@ -27,6 +27,18 @@
       </a>
       <div class="flex items-center gap-1">
         <a
+          href="/ibs"
+          title="Gut tracker"
+          aria-label="Gut tracker"
+          class="rounded-sm p-2 text-ink-mid hover:text-ink-hi hover:bg-surface-1 transition-colors"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5">
+            <path d="M12 2c-2 3-3 5-3 8 0 4 3 6 3 6s3-2 3-6c0-3-1-5-3-8z" />
+            <path d="M9 16c-1.5 1.5-3 1.5-3 3 0 1.5 2 3 6 3s6-1.5 6-3c0-1.5-1.5-1.5-3-3" />
+          </svg>
+        </a>
+        <a
           href="/places"
           title="Places map"
           aria-label="Places"

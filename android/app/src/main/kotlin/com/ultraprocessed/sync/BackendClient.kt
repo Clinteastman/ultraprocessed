@@ -129,6 +129,93 @@ class BackendClient(
         else com.ultraprocessed.core.Http.Json.decodeFromString(FastingProfileDto.serializer(), body)
     }
 
+    // ---- IBS endpoints ----
+
+    suspend fun pushBowels(events: List<BowelEventDto>): Result<Unit> = runCatching {
+        if (events.isEmpty()) return@runCatching
+        val resp = client.post("${baseUrl.trimEnd('/')}/api/v1/ibs/bowel") {
+            bearerAuth(token)
+            contentType(ContentType.Application.Json)
+            setBody(events)
+        }
+        if (!resp.status.isSuccess()) error("HTTP ${resp.status.value}: ${resp.bodyAsText().take(200)}")
+    }
+
+    suspend fun pushSymptoms(events: List<SymptomEventDto>): Result<Unit> = runCatching {
+        if (events.isEmpty()) return@runCatching
+        val resp = client.post("${baseUrl.trimEnd('/')}/api/v1/ibs/symptoms") {
+            bearerAuth(token)
+            contentType(ContentType.Application.Json)
+            setBody(events)
+        }
+        if (!resp.status.isSuccess()) error("HTTP ${resp.status.value}: ${resp.bodyAsText().take(200)}")
+    }
+
+    suspend fun pushDailyCheckins(events: List<DailyCheckinDto>): Result<Unit> = runCatching {
+        if (events.isEmpty()) return@runCatching
+        val resp = client.post("${baseUrl.trimEnd('/')}/api/v1/ibs/daily") {
+            bearerAuth(token)
+            contentType(ContentType.Application.Json)
+            setBody(events)
+        }
+        if (!resp.status.isSuccess()) error("HTTP ${resp.status.value}: ${resp.bodyAsText().take(200)}")
+    }
+
+    suspend fun listBowels(
+        fromIso: String? = null,
+        toIso: String? = null,
+        limit: Int = 500
+    ): Result<List<BowelEventDto>> = runCatching {
+        val q = buildString {
+            append("?limit=").append(limit)
+            if (fromIso != null) append("&from=").append(fromIso)
+            if (toIso != null) append("&to=").append(toIso)
+        }
+        val resp = client.get("${baseUrl.trimEnd('/')}/api/v1/ibs/bowel$q") { bearerAuth(token) }
+        if (!resp.status.isSuccess()) error("HTTP ${resp.status.value}: ${resp.bodyAsText().take(200)}")
+        resp.body<List<BowelEventDto>>()
+    }
+
+    suspend fun listSymptoms(
+        fromIso: String? = null,
+        toIso: String? = null,
+        limit: Int = 500
+    ): Result<List<SymptomEventDto>> = runCatching {
+        val q = buildString {
+            append("?limit=").append(limit)
+            if (fromIso != null) append("&from=").append(fromIso)
+            if (toIso != null) append("&to=").append(toIso)
+        }
+        val resp = client.get("${baseUrl.trimEnd('/')}/api/v1/ibs/symptoms$q") { bearerAuth(token) }
+        if (!resp.status.isSuccess()) error("HTTP ${resp.status.value}: ${resp.bodyAsText().take(200)}")
+        resp.body<List<SymptomEventDto>>()
+    }
+
+    suspend fun listDailyCheckins(
+        fromDay: String? = null,
+        toDay: String? = null,
+        limit: Int = 200
+    ): Result<List<DailyCheckinDto>> = runCatching {
+        val q = buildString {
+            append("?limit=").append(limit)
+            if (fromDay != null) append("&from=").append(fromDay)
+            if (toDay != null) append("&to=").append(toDay)
+        }
+        val resp = client.get("${baseUrl.trimEnd('/')}/api/v1/ibs/daily$q") { bearerAuth(token) }
+        if (!resp.status.isSuccess()) error("HTTP ${resp.status.value}: ${resp.bodyAsText().take(200)}")
+        resp.body<List<DailyCheckinDto>>()
+    }
+
+    suspend fun getTriggerReport(
+        days: Int = 14,
+        limit: Int = 25
+    ): Result<TriggerReportDto> = runCatching {
+        val q = "?days=$days&limit=$limit"
+        val resp = client.get("${baseUrl.trimEnd('/')}/api/v1/ibs/triggers$q") { bearerAuth(token) }
+        if (!resp.status.isSuccess()) error("HTTP ${resp.status.value}: ${resp.bodyAsText().take(200)}")
+        resp.body<TriggerReportDto>()
+    }
+
     /** Upload a JPEG image for a food, identified by its client_uuid. */
     suspend fun uploadFoodImage(clientUuid: String, jpegBytes: ByteArray): Result<Unit> = runCatching {
         val resp = client.post("${baseUrl.trimEnd('/')}/api/v1/foods/$clientUuid/image") {
